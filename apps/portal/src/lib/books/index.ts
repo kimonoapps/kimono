@@ -474,9 +474,18 @@ export type FriendReading = FriendOnBook & { book: Book };
 
 /** Your friends who keep Books on their profile: only they are shown. */
 async function visibleFriends(viewer: string) {
-  const [{ friendsOfUser, friendsDb, people, personIn }, { hiddenAppsOf }] = await Promise.all([import("../friends"), import("../friends/model")]);
+  const [{ friendsOfUser, friendsDb, people, personIn }, { hiddenAppsOf, keptOf }] = await Promise.all([import("../friends"), import("../friends/model")]);
   const everyone = await people();
-  return friendsOfUser(who(viewer)).filter((u) => !hiddenAppsOf(friendsDb(), u).includes("books")).map((u) => personIn(everyone, u));
+  /* Invisible people hide every app; each friend may also keep some rows (their Read, their Loved) to themselves. */
+  return friendsOfUser(who(viewer)).filter((u) => !hiddenAppsOf(friendsDb(), u).includes("books"))
+    .map((u) => ({ ...personIn(everyone, u), kept: new Set(keptOf(friendsDb(), u).filter((k) => k.startsWith("books:")).map((k) => k.slice(6))) }));
+}
+
+/** A friend's shelf row as they let friends see it: a shelf they keep to themselves isn't shown, nor a verdict from a row they keep. */
+function asShared(r: FriendRow, kept: Set<string>): FriendRow | null {
+  if (kept.has(r.state)) return null;
+  const rating = r.rating === "love" && kept.has("loved") ? null : r.rating === "up" && kept.has("liked") ? null : r.rating;
+  return { ...r, rating };
 }
 
 type FriendRow = { username: string; key: string; state: ShelfState; fraction: number; rating: Rating | null; review: string | null; reviewed_at: number | null; updated_at: number };
@@ -490,13 +499,14 @@ export async function friendsOnBook(viewer: string, key: string): Promise<Friend
   const keys = (booksDb().prepare("SELECT key FROM records WHERE identity = ?").all(identity(book)) as { key: string }[]).map((r) => r.key);
   const marks = `(${keys.map(() => "?").join(",")})`;
   const names = `(${friends.map(() => "?").join(",")})`;
-  const rows = booksDb().prepare(`SELECT username, key, state, fraction, rating, review, reviewed_at, updated_at FROM shelf WHERE key IN ${marks} AND username IN ${names} ORDER BY updated_at DESC`)
-    .all(...keys, ...friends.map((f) => f.username)) as FriendRow[];
+  const rows = (booksDb().prepare(`SELECT username, key, state, fraction, rating, review, reviewed_at, updated_at FROM shelf WHERE key IN ${marks} AND username IN ${names} ORDER BY updated_at DESC`)
+    .all(...keys, ...friends.map((f) => f.username)) as FriendRow[])
+    .flatMap((r) => asShared(r, friends.find((f) => f.username === r.username)!.kept) ?? []);
   const seen = new Set<string>();
   return rows.flatMap((r) => {
     if (seen.has(r.username)) return [];
     seen.add(r.username);
-    const p = friends.find((f) => f.username === r.username)!;
+    const { kept: _kept, ...p } = friends.find((f) => f.username === r.username)!; // eslint-disable-line @typescript-eslint/no-unused-vars
     return [{ ...p, ...friendView(r) }];
   });
 }
@@ -506,15 +516,16 @@ export async function friendsReading(viewer: string, limit = 24): Promise<Friend
   const friends = await visibleFriends(viewer);
   if (!friends.length) return [];
   const names = `(${friends.map(() => "?").join(",")})`;
-  const rows = booksDb().prepare(`SELECT username, key, state, fraction, rating, review, reviewed_at, updated_at FROM shelf WHERE username IN ${names} AND state != 'want' AND (rating IS NULL OR rating != 'down') ORDER BY updated_at DESC LIMIT 200`)
-    .all(...friends.map((f) => f.username)) as FriendRow[];
+  const rows = (booksDb().prepare(`SELECT username, key, state, fraction, rating, review, reviewed_at, updated_at FROM shelf WHERE username IN ${names} AND state != 'want' AND (rating IS NULL OR rating != 'down') ORDER BY updated_at DESC LIMIT 200`)
+    .all(...friends.map((f) => f.username)) as FriendRow[])
+    .flatMap((r) => asShared(r, friends.find((f) => f.username === r.username)!.kept) ?? []);
   const out: FriendReading[] = [];
   const seen = new Set<string>();
   for (const r of rows) {
     const book = getBook(r.key);
     if (!book || seen.has(identity(book))) continue;
     seen.add(identity(book));
-    const p = friends.find((f) => f.username === r.username)!;
+    const { kept: _kept, ...p } = friends.find((f) => f.username === r.username)!; // eslint-disable-line @typescript-eslint/no-unused-vars
     out.push({ ...p, ...friendView(r), book });
     if (out.length >= limit) break;
   }
