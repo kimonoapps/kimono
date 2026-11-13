@@ -3,7 +3,7 @@
 SPDX-License-Identifier: CERN-OHL-S-2.0
 Part of the Silkscreen Kimono model, from iandchasse's Silkscreen enclosure (idc LLC, CERN-OHL-S v2): see NOTICE.txt.
 
-The case in a deep crimson rose, the back and keys a shade deeper, the branch and the wordmark inlaid in white on the back, the keys, and on the screen a
+The case in a deep crimson rose, the back a shade deeper, the keys white, the branch and the wordmark inlaid in white on the back, the keys, and on the screen a
 faint page of text (Jane Austen, public domain). Each part is decimated for the web and shaded smooth only across soft
 edges. CAD millimetres (X right, Y up, Z toward the screen) become glTF metres, which share the axes.
 
@@ -30,7 +30,7 @@ LOOK = {  # part: (colour, roughness, faces kept)
     'mark_word': ('#fff4f1', .55, 3000),
     'display': ('#2f2e2c', .4, 400),
 }
-KEY = ('#8a1d2f', .58, 400)
+KEY = ('#fff4f1', .5, 400)
 
 
 def material(colour, rough, texture=None):
@@ -103,7 +103,7 @@ def screen(z):
 scene = trimesh.Scene()
 for name, look in LOOK.items():
     scene.add_geometry(part(name, *look), node_name=name, geom_name=name)
-for f in sorted(PARTS.glob('key_*.stl')):
+for f in sorted([*PARTS.glob('key_*.stl'), *PARTS.glob('skey_*.stl')]):
     scene.add_geometry(part(f.stem, *KEY), node_name=f.stem, geom_name=f.stem)
 glass = trimesh.load_mesh(PARTS / 'display.stl').bounds[1][2]
 scene.add_geometry(screen(glass), node_name='page', geom_name='page')

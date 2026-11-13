@@ -8,7 +8,7 @@ What changed from the original: the back carries Kimono's ink branch (kimono-bra
 Silkscreen book icon was (params.LOGO_BACK, same place and depth, smaller: 18 mm wide), and Kimono's wordmark
 (kimono-wordmark.svg) where the Silkscreen wordmark was, above the grip grooves (params.LOGO_BACK_WORDMARK, same place,
 depth and weight, 22 mm wide). Everything else is the 4.26" standard build as published: the tub (the front, with the
-e-paper window), the lid (the back, with its side keys), the four bottom keys and the display as the case holds it.
+e-paper window), the lid (the back) and its side keys, the four bottom keys and the display as the case holds it.
 Both marks are cut 0.4 mm into the back and their inlays (the bodies that fill the cuts, printed in a second colour:
 white on the crimson case) are exported too.
 
@@ -34,11 +34,12 @@ P.LOGO_BACK = dict(svg=str(HERE / 'kimono-branch.svg'), painter=False, mirror=Tr
                    x=(P.X0 + P.X1) / 2, y=(P.Y0 + P.Y1) / 2, min_feature=0.36, min_stroke=0.7)
 P.LOGO_BACK_WORDMARK = dict(P.LOGO_BACK_WORDMARK, svg=str(HERE / 'kimono-wordmark.svg'), part=None, painter=False, width=22.0)
 
-import tub, lid, keys, refs, logo   # noqa: E402,E401
+import tub, lid, keys, refs, logo, sidekeys   # noqa: E402,E401
 
 parts = {
     'tub': tub.build,
-    'lid': lid.build,
+    'lid': lambda: lid.build(keys=False),          # the lid's body; its side keys apart, as build.py splits them
+    **{f'skey_{r}': (lambda r=r: sidekeys.build(r)) for r in P.TAB_ROOTS},
     'mark': lambda: logo.inlay(P.LOGO_BACK),
     'mark_word': lambda: logo.inlay(P.LOGO_BACK_WORDMARK),
     'display': refs.display,
