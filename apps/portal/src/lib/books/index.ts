@@ -71,6 +71,14 @@ CREATE TABLE IF NOT EXISTS devices (
   if (!cols.includes("rating")) db.exec("ALTER TABLE shelf ADD COLUMN rating TEXT");
   /* And in your own words: a review, which your friends see beside your verdict. */
   if (!cols.includes("review")) db.exec("ALTER TABLE shelf ADD COLUMN review TEXT; ALTER TABLE shelf ADD COLUMN reviewed_at INTEGER;");
+  /* Identities learned to tell volumes apart (2026-11): worked out again once for what's kept. */
+  if ((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version < 2) {
+    const rows = db.prepare("SELECT key, data FROM records").all() as { key: string; data: string }[];
+    const put = db.prepare("UPDATE records SET identity = ? WHERE key = ?");
+    db.exec("BEGIN");
+    for (const r of rows) { try { put.run(identity(JSON.parse(r.data) as Book), r.key); } catch { /* a damaged row keeps its old one */ } }
+    db.exec("COMMIT; PRAGMA user_version = 2");
+  }
   /* Your place in a book, kept apart from the shelf so moving it between shelves (or off) never loses it. Seeded once from the shelf. */
   db.exec("INSERT OR IGNORE INTO places (username, key, fraction, updated_at) SELECT lower(username), key, fraction, updated_at FROM shelf WHERE fraction > 0 AND fraction < 0.98");
   db.exec("UPDATE OR IGNORE shelf SET username = lower(username) WHERE username != lower(username); UPDATE OR IGNORE devices SET username = lower(username) WHERE username != lower(username);");

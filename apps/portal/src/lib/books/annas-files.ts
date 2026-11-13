@@ -3,7 +3,7 @@ import "server-only";
 import { authorNames } from "./annas";
 import { annasClient } from "./annas-client";
 import type { BooksConfig } from "./config";
-import { clean, type Book } from "./model";
+import { clean, otherVolume, volumeMarks, type Book } from "./model";
 import { FileProblem, type FileFormat, type FileSource, type Opened, type Range } from "./files";
 import { userAgent } from "./sources";
 
@@ -82,9 +82,16 @@ const surname = (a: string) => [...words(a)].pop() ?? "";
  * titled in another language).
  */
 function matchOf(file: ListedFile, book: BookRef, byIsbn: boolean): number {
+  /* Any of the book's authors anywhere in the file's (which may list six in one line). */
   const theirs = book.authors.map(surname).filter(Boolean);
-  const authorAgrees = !theirs.length || !file.authors.length || file.authors.some((a) => theirs.includes(surname(a)));
+  const named = words(file.authors.join(" "));
+  const authorAgrees = !theirs.length || !file.authors.length || theirs.some((s) => named.has(s));
   if (!authorAgrees) return 0;
+  /* A workbook's other volumes share its title: "1re secondaire" isn't the "3e secondaire" asked for. */
+  const volume = volumeMarks(`${book.title} ${(book as { subtitle?: string }).subtitle ?? ""}`);
+  const theirVolume = volumeMarks(file.title);
+  if (otherVolume(volume, theirVolume)) return 0;
+  const sameVolume = [...volume].some(([w, n]) => theirVolume.get(w) === n) ? 0.5 : 0;
   /* Titles without their subtitles ("…: A Fable", "(Book 1)"), compared both ways, so another book that names this one doesn't pass. */
   const want = words(book.title.split(/[:(\[]/)[0]);
   const have = words(file.title.split(/[:(\[]/)[0]);
@@ -92,7 +99,7 @@ function matchOf(file: ListedFile, book: BookRef, byIsbn: boolean): number {
   const covers = want.size ? shared / want.size : 0;
   const keeps = have.size ? shared / have.size : 0;
   if (!byIsbn && (covers < 0.5 || keeps < 0.5)) return 0;
-  return (byIsbn ? 1 : 0) + covers + keeps / 2 + (file.format === "epub" ? 0.1 : 0);
+  return (byIsbn ? 1 : 0) + covers + keeps / 2 + sameVolume + (file.format === "epub" ? 0.1 : 0);
 }
 
 const languageNames = (() => { try { return new Intl.DisplayNames(["en"], { type: "language" }); } catch { return null; } })();
@@ -153,7 +160,10 @@ export function annasFiles(getSettings: () => Promise<Settings | null>): FileSou
          they're titled: an "O Alquimista" record names "The Alchemist"'s
          ISBNs too). Files are read off the result pages. */
       const named = `${book.title} ${book.authors[0] ?? ""}`.trim();
-      const queries = [named, ...book.isbns.slice(0, 4)].filter((q): q is string => Boolean(q));
+      /* A volume of a series is looked for by its volume too ("Sommets 3e secondaire"). */
+      const subtitle = (book as { subtitle?: string }).subtitle ?? "";
+      const volume = [...volumeMarks(subtitle)].map(([w, n]) => `${n} ${w}`).join(" ");
+      const queries = [named, volume ? `${book.title} ${volume}` : "", ...book.isbns.slice(0, 4)].filter((q): q is string => Boolean(q));
       const pages = await Promise.all(queries.map((q) =>
         client.get(`/search?q=${encodeURIComponent(q)}&ext=epub&ext=pdf`, false).catch(() => null)));
       const seen = new Set<string>();
@@ -161,7 +171,7 @@ export function annasFiles(getSettings: () => Promise<Settings | null>): FileSou
       pages.forEach((html, i) => {
         for (const file of fileResultsIn(html ?? "")) {
           if (seen.has(file.md5) || (file.format !== "epub" && file.format !== "pdf")) continue;
-          const score = matchOf(file, book, queries[i] !== named);
+          const score = matchOf(file, book, /^\d{10,13}$/.test(queries[i]));
           if (score <= 0) continue;
           seen.add(file.md5);
           found.push({ ...file, score });

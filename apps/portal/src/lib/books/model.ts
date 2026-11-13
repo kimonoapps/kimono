@@ -155,7 +155,29 @@ export function genresOf(subjects: string[], max = 6): string[] {
 /* ── One book from several sources ─────────────────────────────────────── */
 
 const sameTitle = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").replace(/^(the|a|an) /, "").trim();
-export const identity = (b: Pick<Book, "title" | "authors">) => `${sameTitle(b.title).slice(0, 60)}|${(b.authors[0] ?? "").toLowerCase().split(/\s+/).pop() ?? ""}`;
+/*
+ * Which volume of a series a title names, for books whose volumes share a
+ * title (school workbooks, tomes): "3e secondaire" → secondaire 3, "2e cycle"
+ * → cycle 2, "Tome 2" → tome 2. Series numbers of novels ("Book 1") are left
+ * out, so editions with and without them stay one book.
+ */
+const markWords = "secondaire|primaire|cycle|ann[ée]e|grade|level|niveau|tome|volume|vol|partie|part";
+const numberThenWord = new RegExp(`(?<![\\p{L}\\p{N}])(\\d{1,2})\\s*(?:e|re|er|ère|ème|nd|rd|th|st)?\\s+(?:du\\s+|de\\s+|of\\s+)?(${markWords})(?![\\p{L}])`, "giu");
+const wordThenNumber = new RegExp(`(?<![\\p{L}])(${markWords})\\.?\\s*(\\d{1,2})(?![\\p{N}])`, "giu");
+export function volumeMarks(text: string): Map<string, number> {
+  const marks = new Map<string, number>();
+  const word = (w: string) => w.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/^vol$/, "volume");
+  for (const m of text.matchAll(numberThenWord)) marks.set(word(m[2]), Number(m[1]));
+  for (const m of text.matchAll(wordThenNumber)) if (!marks.has(word(m[1]))) marks.set(word(m[1]), Number(m[2]));
+  return marks;
+}
+/** Two books' volumes disagree: they both name, say, a "secondaire" but not the same one. */
+export const otherVolume = (a: Map<string, number>, b: Map<string, number>) => [...a].some(([w, n]) => b.has(w) && b.get(w) !== n);
+
+export const identity = (b: Pick<Book, "title" | "authors"> & { subtitle?: string }) => {
+  const marks = [...volumeMarks(`${b.title} ${b.subtitle ?? ""}`)].sort().map(([w, n]) => `${w}${n}`).join(".");
+  return `${sameTitle(b.title).slice(0, 60)}|${(b.authors[0] ?? "").toLowerCase().split(/\s+/).pop() ?? ""}${marks ? `|${marks}` : ""}`;
+};
 
 /* Whose word to take for what a book is about: readers' and publishers'
    summaries first; Open Library's are often a passage from the book itself. */
