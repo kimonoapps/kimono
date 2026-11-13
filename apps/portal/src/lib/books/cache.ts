@@ -11,14 +11,18 @@
 import { createHash } from "node:crypto";
 import { createReadStream, createWriteStream, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { Readable } from "node:stream";
+import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { FilePreparing, openFile, type Opened, type Range } from "./files";
 
 type Entry = { file: string; size: number; filename: string; at: number };
 type Index = Record<string, Entry>;
 
-const g = globalThis as unknown as { kimonoBookFilling?: Map<string, Promise<Entry | null>>; kimonoBookIndex?: { dir: string; index: Index } };
+const g = globalThis as unknown as {
+  kimonoBookFilling?: Map<string, Promise<Entry | null>>; kimonoBookIndex?: { dir: string; index: Index };
+  /* How far each download has got, for the bar the first reader sees. */
+  kimonoBookFillProgress?: Map<string, { got: number; size: number | null }>;
+};
 
 /* When each book was last opened: strictly increasing, so two opens in the same millisecond still have an order. */
 let last = 0;
@@ -76,7 +80,11 @@ export class FileCache {
       const tmp = join(this.dir, `${file}.part`);
       try {
         const opened = await open();
-        await pipeline(Readable.fromWeb(opened.body as import("node:stream/web").ReadableStream), createWriteStream(tmp, { mode: 0o600 }));
+        const progress = (g.kimonoBookFillProgress ??= new Map());
+        const at = { got: 0, size: opened.size };
+        progress.set(`${this.dir}|${address}`, at);
+        const counted = new Transform({ transform(chunk: Buffer, _enc, done) { at.got += chunk.length; done(null, chunk); } });
+        await pipeline(Readable.fromWeb(opened.body as import("node:stream/web").ReadableStream), counted, createWriteStream(tmp, { mode: 0o600 }));
         const size = statSync(tmp).size;
         if (opened.size !== null && size !== opened.size) throw new Error(`short copy: ${size} of ${opened.size}`);
         renameSync(tmp, join(this.dir, file));
@@ -93,9 +101,21 @@ export class FileCache {
         console.warn(`books cache: ${address}: ${error instanceof Error ? error.message : error}`);
         return null;
       }
-    })().finally(() => filling.delete(`${this.dir}|${address}`));
+    })().finally(() => { filling.delete(`${this.dir}|${address}`); g.kimonoBookFillProgress?.delete(`${this.dir}|${address}`); });
     filling.set(`${this.dir}|${address}`, job);
     return job;
+  }
+
+  /**
+   * Where a file stands: kept, being fetched (bytes so far, of how many), or
+   * neither. Asking starts the fetch, so a reader can show a bar while it runs.
+   */
+  status(address: string): { ready: true; size: number } | { ready: false; got: number; size: number | null } {
+    const kept = this.get(address);
+    if (kept) return { ready: true, size: kept.size };
+    void this.fill(address).catch(() => null);
+    const at = g.kimonoBookFillProgress?.get(`${this.dir}|${address}`);
+    return { ready: false, got: at?.got ?? 0, size: at?.size ?? null };
   }
 
   /** Least recently opened first, until the cache fits under its cap again. */

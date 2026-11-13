@@ -638,6 +638,32 @@ function FileActions({ files, prefers, onPrefers, onRead }: {
 }) {
   const [missing, setMissing] = useState(false);
   const [asking, setAsking] = useState(false);
+  /* The first time anyone opens a file, the server fetches its copy: a bar while it does, then the book. */
+  const [getting, setGetting] = useState<{ fraction: number | null; note: string } | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  const alive = useRef(true);
+  useEffect(() => () => { alive.current = false; }, []);
+  const open = async (file: BookFileInfo) => {
+    if (getting) return;
+    setFailed(null);
+    const mb = (n: number) => n >= 1_048_576 ? `${(n / 1_048_576).toFixed(n >= 10_485_760 ? 0 : 1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
+    for (let first = true; alive.current; first = false) {
+      try {
+        const s = await booksApi.fetchStatus(file.address);
+        if (s.ready) break;
+        if (s.preparing) setGetting({ fraction: s.progress ?? null, note: "Making the EPUB from the PDF" });
+        else setGetting({ fraction: s.size ? (s.got ?? 0) / s.size : null, note: s.size ? `Getting the book · ${mb(s.got ?? 0)} of ${mb(s.size)}` : s.got ? `Getting the book · ${mb(s.got)}` : "Getting the book" });
+      } catch (e) {
+        setGetting(null);
+        setFailed(e instanceof BooksError ? e.message : "That book couldn't be fetched. Try again in a moment.");
+        return;
+      }
+      await new Promise((r) => setTimeout(r, first ? 300 : 600));
+    }
+    if (!alive.current) return;
+    setGetting(null);
+    onRead(file);
+  };
   const [remember, setRemember] = useState(true);
   const usable = (files ?? []).filter((f) => f.readable && !f.preparing);
   const epub = usable.find((f) => f.format === "epub") ?? null;
@@ -652,29 +678,37 @@ function FileActions({ files, prefers, onPrefers, onRead }: {
   const read = () => {
     if (!best) { if (!looking) setMissing(true); return; }
     if (both && !prefers) { setAsking(true); return; }
-    onRead(best);
+    void open(best);
   };
   const choose = (format: ReadingFormat) => {
     const file = format === "epub" ? epub : pdf;
     setAsking(false);
     if (remember) { onPrefers(format); void booksApi.setFormat(format).catch(() => {}); }
-    if (file) onRead(file);
+    if (file) void open(file);
   };
   const what = (f: BookFileInfo) => f.format === "pdf" ? "PDF, the original pages" : madeFromPdf(f) ? "EPUB, made from the PDF" : "EPUB";
   return <>
     <div className="kb-btns kb-files">
-      <button className={cx("kb-btn kb-filled", looking && "kb-looking", !looking && !best && "kb-absent")}
-        aria-busy={looking} aria-expanded={both && !prefers ? asking : undefined} onClick={read}>
+      <button className={cx("kb-btn kb-filled", looking && "kb-looking", !looking && !best && "kb-absent", getting && "kb-getting")}
+        style={getting ? { "--got": getting.fraction ?? 0 } as React.CSSProperties : undefined}
+        aria-busy={looking || Boolean(getting)} aria-expanded={both && !prefers ? asking : undefined} onClick={read}>
         {looking ? <MorphLoader tone="plain" ink="#000000" label="Looking for a copy" className="kb-ink" /> : <svg viewBox="0 0 24 24" aria-hidden><path d="M12 6.5C10 5 7.5 4.5 4 5v13c3.5-.5 6 0 8 1.5 2-1.5 4.5-2 8-1.5V5c-3.5-.5-6 0-8 1.5Zm0 0V19.5" /></svg>}
         {best?.sample ? "Preview" : "Read"}
+        {getting ? <span className="kb-got" aria-hidden /> : null}
       </button>
       {copy ? <button className="kb-btn kb-tonal" title="Save a copy" onClick={() => { location.href = `/api/v1/books/file?f=${encodeURIComponent(copy.address)}&format=${copy.format}&download=1`; }}>
         <svg viewBox="0 0 24 24" aria-hidden><path d="M12 4v11m0 0 4.5-4.5M12 15l-4.5-4.5M5 19h14" /></svg>
         {copy.format.toUpperCase()}{sizeOf(copy)}</button> : null}
     </div>
-    {best && !asking && (prefers || !both) ? <p className="kb-format-line">
+    {getting ? <div className="kb-getting-line" role="status" aria-live="polite">
+      <span className="kb-getting-bar"><span style={{ width: getting.fraction === null ? undefined : `${Math.max(2, getting.fraction * 100)}%` }} className={getting.fraction === null ? "kb-unknown" : undefined} /></span>
+      <span>{getting.note}{getting.fraction !== null ? ` · ${Math.round(getting.fraction * 100)}%` : ""}</span>
+      <span className="kb-getting-hint">Only the first time: after this it opens at once, for everyone here.</span>
+    </div> : null}
+    {failed ? <p className="kb-format-line kb-failed" role="alert">{failed}</p> : null}
+    {best && !asking && !getting && (prefers || !both) ? <p className="kb-format-line">
       {what(best)}{madeFromPdf(best) ? <span className="kb-format-note"> · the text reflows to your screen; tables and pictures may sit differently</span> : null}
-      {other ? <> · <button className="kb-link" onClick={() => onRead(other)}>Read the {other.format.toUpperCase()} instead</button></> : null}
+      {other ? <> · <button className="kb-link" onClick={() => void open(other)}>Read the {other.format.toUpperCase()} instead</button></> : null}
       {!both && making ? <> · an EPUB is being made from it</> : null}
     </p> : null}
     {asking && epub && pdf ? <div className="kb-format" role="group" aria-label="How would you like to read it?">

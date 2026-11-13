@@ -8,5 +8,7 @@ import { FileCache } from "./cache";
 const g = globalThis as unknown as { kimonoBookCache?: FileCache };
 export function bookFileCache(): FileCache {
   const gb = Number(process.env.KIMONO_BOOKS_CACHE_GB) || 50;
-  return (g.kimonoBookCache ??= new FileCache(join(stateDir, "books", "files"), gb * 1024 ** 3));
+  /* Made again when the code behind it changes (a reload keeps the old one otherwise). */
+  if (!(g.kimonoBookCache instanceof FileCache)) g.kimonoBookCache = new FileCache(join(stateDir, "books", "files"), gb * 1024 ** 3);
+  return g.kimonoBookCache;
 }

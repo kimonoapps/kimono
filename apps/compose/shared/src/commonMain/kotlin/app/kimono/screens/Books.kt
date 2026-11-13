@@ -539,6 +539,7 @@ fun BookSheet(books: Books, platform: app.kimono.data.Platform, key: String, onD
     var readingFile by remember(key) { mutableStateOf<BookFile?>(null) }
     var prefers by remember(key) { mutableStateOf<String?>(null) }
     var asking by remember(key) { mutableStateOf(false) }
+    var gettingNote by remember(key) { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(key) {
         runCatching { books.book(key) }.onSuccess { page = it }.onFailure { if (page == null) say(it.message ?: "This book didn't open.") }
@@ -558,10 +559,28 @@ fun BookSheet(books: Books, platform: app.kimono.data.Platform, key: String, onD
         if (p == null) { Box(Modifier.fillMaxWidth().height(320.dp), contentAlignment = Alignment.Center) { InkLoader(size = 48.dp) }; return@InkSheet }
         val b = p.book
         val copies = Copies.of(files, prefers)
-        /* An EPUB opens in Kimono's own reader, a part at a time; a PDF in the phone's viewer. */
+        /* The first time anyone opens a file the server fetches its copy: a bar while it does. Then an EPUB opens in Kimono's own reader, a part at a time; a PDF in the phone's viewer. */
         fun readFile(f: BookFile) {
-            if (f.format == "epub") { readingFile = f; return }
+            if (fetching != null) return
             scope.launch {
+                fetching = 0f
+                val kept = runCatching {
+                    while (true) {
+                        val s = books.fetchStatus(f)
+                        if (s.ready) break
+                        val size = s.size
+                        gettingNote = when {
+                            s.preparing -> "Making the EPUB from the PDF"
+                            size != null && size > 0 -> "Getting the book · ${megabytes(s.got)} of ${megabytes(size)}"
+                            else -> "Getting the book"
+                        }
+                        fetching = when { s.preparing -> (s.progress ?: 0.0).toFloat(); size != null && size > 0 -> (s.got.toFloat() / size).coerceIn(0f, 1f); else -> 0.02f }
+                        kotlinx.coroutines.delay(600)
+                    }
+                }.onFailure { say(it.message ?: "That book couldn't be fetched.") }.isSuccess
+                gettingNote = null
+                if (!kept) { fetching = null; return@launch }
+                if (f.format == "epub") { fetching = null; readingFile = f; return@launch }
                 fetching = 0f
                 runCatching {
                     val path = books.download(f, platform.cacheDir()) { got -> fetching = f.size?.let { (got.toFloat() / it).coerceIn(0f, 1f) } ?: 0f }
@@ -617,8 +636,14 @@ fun BookSheet(books: Books, platform: app.kimono.data.Platform, key: String, onD
                     }
                 }
             }
-            fetching?.let { f -> if (f > 0f) Box(Modifier.padding(horizontal = 24.dp, vertical = 8.dp).fillMaxWidth().height(4.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest)) {
-                Box(Modifier.fillMaxHeight().fillMaxWidth(f).background(MaterialTheme.colorScheme.primary))
+            fetching?.let { f -> if (f > 0f || gettingNote != null) Column(Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
+                Box(Modifier.fillMaxWidth().height(6.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest)) {
+                    Box(Modifier.fillMaxHeight().fillMaxWidth(f.coerceAtLeast(.02f)).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
+                }
+                gettingNote?.let { note ->
+                    Text("$note · ${(f * 100).toInt()}%", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
+                    Text("Only the first time: after this it opens at once, for everyone here.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .7f))
+                }
             } }
             /* Which copy Read opens, and the other a tap away. */
             copies.best?.takeIf { !asking && (prefers != null || !copies.both) }?.let { best ->
@@ -745,6 +770,12 @@ private fun blurb(md: String): androidx.compose.ui.text.AnnotatedString = androi
         if (heading) addStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.SemiBold), start, length)
         if (i < lines.lastIndex) append("\n")
     }
+}
+
+private fun megabytes(n: Long): String = when {
+    n >= 10_485_760 -> "${n / 1_048_576} MB"
+    n >= 1_048_576 -> "${(n * 10 / 1_048_576) / 10.0} MB"
+    else -> "${maxOf(1, n / 1024)} KB"
 }
 
 /** The readable copies of a book: its EPUB and PDF, which Read opens, and the other. */

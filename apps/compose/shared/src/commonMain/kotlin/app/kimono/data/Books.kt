@@ -73,6 +73,8 @@ data class BookFile(val address: String, val source: String, val format: String,
 @Serializable private data class ShelfList(val books: List<ShelfItem> = emptyList())
 @Serializable data class Files(val files: List<BookFile> = emptyList(), val prefers: String? = null)
 @Serializable private data class Prefs(val format: String? = null)
+/** Whether the server has its copy of a file yet: bytes so far of how many, or a PDF's EPUB still being made. */
+@Serializable data class FetchStatus(val ready: Boolean = false, val got: Long = 0, val size: Long? = null, val preparing: Boolean = false, val progress: Double? = null)
 @Serializable private data class Rated(val shelf: Mine? = null)
 @Serializable data class Progressed(val key: String, val state: String, val fraction: Double)
 
@@ -94,6 +96,8 @@ class Books(private val session: Session) {
     suspend fun files(key: String): List<BookFile> = filesAndPreference(key).files
     /** The files, and how you like to read a book that comes both ways ("epub", "pdf", or null: not asked yet). */
     suspend fun filesAndPreference(key: String): Files = json.decodeFromString(session.call("$BASE/files?key=${key.encodeURLQueryComponent()}"))
+    /** Asking starts the server's one download of a file from its source; ask again for how far it's got. */
+    suspend fun fetchStatus(file: BookFile): FetchStatus = json.decodeFromString(session.call("$BASE/fetch?f=${file.address.encodeURLQueryComponent()}"))
     suspend fun setFormat(format: String?): String? = json.decodeFromString<Prefs>(session.call("$BASE/prefs", HttpMethod.Put) {
         contentType(ContentType.Application.Json)
         setBody(buildJsonObject { if (format == null) put("format", JsonNull) else put("format", format) }.toString())

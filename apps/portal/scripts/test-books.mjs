@@ -198,3 +198,23 @@ test('descriptions keep their paragraphs and emphasis, as Markdown', () => {
   assert.equal(model.cleanDescription('First.\r\n\r\n\r\n- one\n- two\n\nSee [the site](https://example.com).\n\n----------\n[1]: https://example.com'), 'First.\n\n- one\n- two\n\nSee the site.');
   assert.equal(model.cleanDescription('Lots   of\t space'), 'Lots of space');
 });
+
+test('the first fetch of a file reports how far it has got, then that it is ready', async () => {
+  const dir = mkdtempSync(joinPath(tmpdir(), 'kb-progress-'));
+  /* A slow source: 4 chunks of 100 bytes, 40ms apart. */
+  files.registerFileSource({ name: 'slow-fetch', async find() { return []; }, async open() {
+    let n = 0;
+    const body = new ReadableStream({ async pull(c) { await new Promise((r) => setTimeout(r, 40)); if (n++ < 4) c.enqueue(new Uint8Array(100).fill(n)); else c.close(); } });
+    return { body, size: 400, range: null, filename: 'slow.epub' };
+  } });
+  const c = new cache.FileCache(dir, 10_000);
+  assert.deepEqual(c.status('slow-fetch:x'), { ready: false, got: 0, size: null }); // asking starts it
+  await new Promise((r) => setTimeout(r, 110));
+  const midway = c.status('slow-fetch:x');
+  assert.equal(midway.ready, false);
+  assert.equal(midway.size, 400);
+  assert.ok(midway.got > 0 && midway.got < 400, `got ${midway.got}`);
+  await c.fill('slow-fetch:x');
+  assert.deepEqual(c.status('slow-fetch:x'), { ready: true, size: 400 });
+  files.unregisterFileSource('slow-fetch');
+});
