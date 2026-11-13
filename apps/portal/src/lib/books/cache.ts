@@ -2,7 +2,7 @@
  * 本 Books' file cache: a book a source opened once is kept on the server's
  * disk, so opening it again, and every page and range after, comes from
  * here instead of the source. Least recently opened books make room for new
- * ones past the cap (KIMONO_BOOKS_CACHE_GB, 4 GB by default).
+ * ones past the cap (KIMONO_BOOKS_CACHE_GB, 50 GB by default).
  *
  * The first opening isn't held up by it: the request is answered from the
  * source while one copy fills the cache behind it (one per file, however
