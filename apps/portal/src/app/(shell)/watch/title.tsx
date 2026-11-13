@@ -102,6 +102,7 @@ export function TitleSheet({ id, onClose, refreshKey, leaving = false }: { id: s
                   <div className="kw-acts" style={{ position: "relative" }}>
                     <ListButton id={t.id} variant="act" />
                     <RateButton id={t.id} variant="act" />
+                    {view.resume ? <button className="kw-act" onClick={() => void watch.forget(t.id).then((ok) => { if (ok) void load(view.season); })}><Icon name="close" /><span>Remove from history</span></button> : null}
                     {view.language ? <button className={cx("kw-act", (langOpen || view.tracks) && "kw-on")} aria-expanded={langOpen} onClick={() => setLangOpen(!langOpen)}><Icon name="cc" /><span>Language</span></button> : null}
                     {series && view.hasFillers ? <label className={cx("kw-act kw-switch-act", view.fillers === "skip" && "kw-on")}>
                       <input type="checkbox" checked={view.fillers === "skip"} onChange={(event) => void setFillers(event.target.checked)} /><i /><span>Skip fillers</span>

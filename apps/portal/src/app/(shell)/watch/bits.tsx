@@ -23,6 +23,8 @@ export type Watch = {
   setListed: (id: string, on: boolean) => void;
   rate: (id: string, rating: Rating | null) => void;
   remind: (id: string, on: boolean, name: string) => void;
+  /** Remove from history: forgets where they got to in it; it leaves Continue watching and what friends see. */
+  forget: (id: string) => Promise<boolean>;
   /** Every card seen so far, for More like this and what to watch after. */
   known: () => Card[];
   firstName: string;

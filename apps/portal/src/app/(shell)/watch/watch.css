@@ -150,6 +150,9 @@
 .kw .kw-cw .kw-meta{display:flex;align-items:center;gap:8px;padding:8px 6px 8px 12px;font-size:13px;color:var(--fg-2)}
 .kw .kw-cw .kw-meta b{color:var(--fg);font-weight:700;display:block;font-size:14px}
 .kw .kw-cw .kw-meta div{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kw .kw-cw .kw-cw-forget{width:32px;height:32px;margin-left:-6px;color:var(--fg-3)}
+.kw .kw-cw .kw-cw-forget svg{width:18px;height:18px}
+@media (hover:hover){.kw .kw-cw .kw-cw-forget{opacity:0;transition:opacity .2s}.kw .kw-cw:hover .kw-cw-forget,.kw .kw-cw .kw-cw-forget:focus-visible{opacity:1}}
 @media (max-width:899px){.kw .kw-cw{width:clamp(150px,42vw,220px)}}
 
 .kw .kw-t10{display:flex;align-items:flex-end;width:auto}

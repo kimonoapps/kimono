@@ -302,6 +302,11 @@ export function saveProgress(db: DatabaseSync, username: string, p: Omit<Progres
     .run(username, p.titleId, p.season, p.episode, Math.min(p.position, p.duration), p.duration, now);
 }
 
+/** Forgets where someone got to in a title, every episode of it: it leaves Continue watching and what friends see, and starts from the beginning. */
+export function forgetProgress(db: DatabaseSync, username: string, titleId: string) {
+  db.prepare("DELETE FROM progress WHERE lower(username) = ? AND title_id = ?").run(username.toLowerCase(), titleId);
+}
+
 export function progressOf(db: DatabaseSync, username: string, titleId: string): Progress[] {
   return (db.prepare("SELECT * FROM progress WHERE username = ? AND title_id = ? ORDER BY season, episode").all(username, titleId) as Row[]).map(progressFrom);
 }

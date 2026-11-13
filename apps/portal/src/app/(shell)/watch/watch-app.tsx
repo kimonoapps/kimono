@@ -208,6 +208,14 @@ export function WatchApp({ me, household, accent, signOut, phoneApp = false }: {
       say(rating ? { down: "Got it. We’ll show you less like this.", up: "Thanks. Rated.", love: "Love it. We’ll find more." }[rating] : "Rating removed");
       watchApi.mark(id, { rating }).catch(() => say("That didn't work."));
     },
+    forget: async (id) => {
+      try { await watchApi.forget(id); } catch { say("That didn't work."); return false; }
+      /* Off Continue watching at once; the rows come again behind it. */
+      setHome((now) => now ? { ...now, rows: now.rows.map((r) => r.id === "continue" ? { ...r, items: r.items.filter((c) => c.id !== id) } : r).filter((r) => r.items.length) } : now);
+      say("Removed from history");
+      void loadHome(filterRef.current);
+      return true;
+    },
     remind: (id, on, name) => {
       setMark(id, { reminding: on });
       say(on ? `We’ll let you know when ${name} arrives` : "Reminder off");

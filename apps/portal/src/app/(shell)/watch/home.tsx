@@ -85,7 +85,8 @@ function ContinueTile({ card }: { card: ContinueCard }) {
       <Img src={card.backdrop ?? card.poster} />
     </button>
     <div className="kw-bar"><i style={{ width: `${Math.max(4, card.fraction * 100)}%` }} /></div>
-    <div className="kw-meta"><div><b>{card.name}</b>{label}</div><button className="kw-iconbtn" aria-label={`Resume ${card.name}`} onClick={() => watch.play(card.id, series ? { season: card.season, episode: card.episode } : undefined)}><Icon name="play" /></button></div>
+    <div className="kw-meta"><div><b>{card.name}</b>{label}</div><button className="kw-iconbtn" aria-label={`Resume ${card.name}`} onClick={() => watch.play(card.id, series ? { season: card.season, episode: card.episode } : undefined)}><Icon name="play" /></button>
+      <button className="kw-iconbtn kw-cw-forget" aria-label={`Remove ${card.name} from history`} title="Remove from history" onClick={() => void watch.forget(card.id)}><Icon name="close" /></button></div>
   </div>;
 }
 
