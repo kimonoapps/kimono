@@ -187,6 +187,9 @@ export function ProfileView({ username, home = false }: { username: string; home
   const [problem, setProblem] = useState<string | null>(null);
   const [asked, setAsked] = useState(0);
   const [removing, setRemoving] = useState(false);
+  /* What the × is about to take off, waiting on a yes. */
+  const [dropping, setDropping] = useState<{ s: Section; i: Item } | null>(null);
+  const [unrecommending, setUnrecommending] = useState<Recommendation | null>(null);
   const [recommending, setRecommending] = useState<Item | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   /* Which app's rows are open to choose what friends see of them. */
@@ -276,7 +279,7 @@ export function ProfileView({ username, home = false }: { username: string; home
         </div>
         <div className="fr-shelf k-inkbar">{p.recommendations.map((r) => <Tile key={r.id} item={r}>
           {r.note ? <q className="fr-tile-note">{r.note}</q> : null}
-          {p.you ? <button type="button" className="fr-away" aria-label={`Take ${r.title} off your profile`} onClick={() => void takeBack(r)}><LineIcon name="close" /></button>
+          {p.you ? <button type="button" className="fr-away" aria-label={`Take ${r.title} off your profile`} onClick={() => setUnrecommending(r)}><LineIcon name="close" /></button>
             : <button type="button" className="fr-away" aria-label={`Recommend ${r.title}`} onClick={() => setRecommending(r)}><LineIcon name="send" /></button>}
         </Tile>)}</div>
       </section> : null}
@@ -296,7 +299,7 @@ export function ProfileView({ username, home = false }: { username: string; home
             return <div key={`${s.app}:${s.kind}`} className={only ? "is-kept" : undefined}>
               <div className="label fr-label">{s.title}{only ? tag(true, false, () => setPrivacyOpen(app)) : null}</div>
               <div className="fr-shelf k-inkbar">{s.items.map((i) => <Tile key={i.itemId} item={i}>
-                {p.you ? <button type="button" className="fr-away" aria-label={`Take ${i.title} off ${s.title}`} onClick={() => void drop(s, i)}><LineIcon name="close" /></button>
+                {p.you ? <button type="button" className="fr-away" aria-label={`Take ${i.title} off ${s.title}`} onClick={() => setDropping({ s, i })}><LineIcon name="close" /></button>
                   : <button type="button" className="fr-away" aria-label={`Recommend ${i.title}`} onClick={() => setRecommending(i)}><LineIcon name="send" /></button>}
               </Tile>)}</div>
             </div>;
@@ -311,10 +314,26 @@ export function ProfileView({ username, home = false }: { username: string; home
       <Seal tone="quiet" compact onClick={() => setRemoving(false)}>Keep</Seal>
       <Seal tone="danger" compact onClick={() => { setRemoving(false); void change("remove"); }}>Remove</Seal>
     </>}><p className="fr-quiet">You&rsquo;ll stop seeing each other&rsquo;s profiles and what you watch.</p></InkSheet> : null}
+    {dropping ? <InkSheet title={`Take ${dropping.i.title} off ${dropping.s.title}?`} icon="trash" onClose={() => setDropping(null)} actions={<>
+      <Seal tone="quiet" compact onClick={() => setDropping(null)}>Keep</Seal>
+      <Seal tone="danger" compact onClick={() => { const d = dropping; setDropping(null); void drop(d.s, d.i); }}>Take off</Seal>
+    </>}><p className="fr-quiet">{dropLoses(dropping.s)}</p></InkSheet> : null}
+    {unrecommending ? <InkSheet title={`Take ${unrecommending.title} off your profile?`} icon="trash" onClose={() => setUnrecommending(null)} actions={<>
+      <Seal tone="quiet" compact onClick={() => setUnrecommending(null)}>Keep</Seal>
+      <Seal tone="danger" compact onClick={() => { const r = unrecommending; setUnrecommending(null); void takeBack(r); }}>Take off</Seal>
+    </>}><p className="fr-quiet">{unrecommending.note ? "Your note goes with it." : "Friends stop seeing you recommend it."}</p></InkSheet> : null}
     {recommending ? <RecommendSheet item={recommending} onClose={() => setRecommending(null)} onSent={setToast} /> : null}
     {toast ? <div className="fr-toast" role="status">{toast}</div> : null}
   </div>;
 }
+
+/** What taking a title off a row loses, said before it's done (lib/friends removeFromRow). */
+const dropLoses = (s: Section) =>
+  s.app === "books" && s.kind === "reading" ? "You'll lose your progress in it."
+    : s.app === "books" && s.kind === "read" ? "You'll lose that you've read it."
+      : s.kind === "loved" || s.kind === "liked" ? "Your rating goes with it."
+        : s.app === "watch" && s.kind === "watched" ? "Friends stop seeing it until you watch it again. What you've watched stays."
+          : `It comes off your ${s.title}.`;
 
 const keptFrom = (privacy: Privacy) => [
   ...(privacy.friends ? [] : ["friends"]),
