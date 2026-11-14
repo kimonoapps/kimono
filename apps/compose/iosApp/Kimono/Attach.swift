@@ -3,7 +3,7 @@ import PhotosUI
 import UIKit
 import UniformTypeIdentifiers
 
-/// Attaching from the phone: the system's photo picker, or the Files app's.
+/// Attaching from the phone: the camera, the system's photo picker, or the Files app's.
 /// Whatever is picked is copied into the cache and handed back once; cancelling hands back nothing.
 @MainActor
 final class Attach: NSObject {
@@ -18,6 +18,15 @@ final class Attach: NSObject {
         /* JPEG and H.264 rather than HEIC and HEVC, so anything that reads the file can. */
         config.preferredAssetRepresentationMode = .compatible
         let picker = PHPickerViewController(configuration: config)
+        picker.delegate = self
+        show(picker, done)
+    }
+
+    func camera(_ done: @escaping ([IosPickedFile]) -> Void) {
+        guard UIImagePickerController.isSourceTypeAvailable(.camera) else { return done([]) }
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.cameraCaptureMode = .photo
         picker.delegate = self
         show(picker, done)
     }
@@ -95,4 +104,37 @@ extension Attach: UIDocumentPickerDelegate {
     nonisolated func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
         MainActor.assumeIsolated { finish([]) }
     }
+}
+
+extension Attach: UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+    nonisolated func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+        MainActor.assumeIsolated {
+            picker.dismiss(animated: true)
+            guard let image = info[.originalImage] as? UIImage else { return finish([]) }
+            DispatchQueue.global(qos: .userInitiated).async {
+                let stamp = Attach.stamp.string(from: Date())
+                let to = Attach.place("Photo \(stamp).jpg")
+                /* JPEG, upright: anything that reads the file sees it as it was taken. */
+                guard let data = image.jpegData(compressionQuality: 0.85), (try? data.write(to: to)) != nil else {
+                    return DispatchQueue.main.async { self.finish([]) }
+                }
+                let file = Attach.picked(to)
+                DispatchQueue.main.async { self.finish([file]) }
+            }
+        }
+    }
+
+    nonisolated func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+        MainActor.assumeIsolated {
+            picker.dismiss(animated: true)
+            finish([])
+        }
+    }
+
+    nonisolated private static let stamp: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
+        return f
+    }()
 }

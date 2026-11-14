@@ -1704,6 +1704,7 @@ private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMark
                         onDevice = { attach { platform.pickFiles() } },
                         onDrive = if (w.drive != null && w.isOwner) ({ choosing = true }) else null,
                         onPhotos = if (platform.photoPicker) ({ attach { platform.pickMedia() } }) else null,
+                        onCamera = if (platform.camera) ({ attach { platform.takePhoto() } }) else null,
                     )
                     MessageField(
                         code,

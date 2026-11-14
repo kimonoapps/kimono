@@ -292,6 +292,29 @@ class AndroidPlatform(private val context: Context) : Platform {
         pickingFiles = null
     }
 
+    var launchCamera: ((Uri) -> Unit)? = null
+    private var taking: CompletableDeferred<Boolean>? = null
+
+    override val camera: Boolean get() = context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_CAMERA_ANY)
+
+    /* The phone's own camera app takes it, into a file of ours it's lent; Kimono never asks for the camera itself. */
+    override suspend fun takePhoto(): List<PickedFile> {
+        val launch = launchCamera ?: return emptyList()
+        val stamp = java.text.SimpleDateFormat("yyyy-MM-dd 'at' HH.mm.ss", java.util.Locale.US).format(java.util.Date())
+        val file = withContext(Dispatchers.IO) {
+            File(File(context.cacheDir, "camera/${java.util.UUID.randomUUID()}").apply { mkdirs() }, "Photo $stamp.jpg")
+        }
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
+        val waiting = CompletableDeferred<Boolean>()
+        taking?.complete(false)
+        taking = waiting
+        runCatching { launch(uri) }.onFailure { taking = null; return emptyList() }
+        if (!waiting.await() || !file.exists() || file.length() == 0L) { file.delete(); return emptyList() }
+        return listOfNotNull(pickedFile(uri))
+    }
+
+    fun photoTaken(taken: Boolean) { taking?.complete(taken); taking = null }
+
     /** A shared or picked file, read straight from its provider a piece at a time. */
     fun pickedFile(uri: Uri): PickedFile? {
         var name = "File"

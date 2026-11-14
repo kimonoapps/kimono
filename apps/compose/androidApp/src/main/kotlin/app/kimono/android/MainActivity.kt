@@ -27,6 +27,7 @@ class MainActivity : ComponentActivity() {
 
     private val picker = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> platform.picked(uri) }
     private val filePicker = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> platform.filesPicked(uris) }
+    private val camera = registerForActivityResult(ActivityResultContracts.TakePicture()) { taken -> platform.photoTaken(taken) }
     /* Upload progress shows as a notification; Android 13 asks once. */
     private val notifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
     /* The microphone, asked for the first time someone speaks a message. */
@@ -39,6 +40,7 @@ class MainActivity : ComponentActivity() {
         platform.activity = this
         platform.askMicrophone = { microphone.launch(android.Manifest.permission.RECORD_AUDIO) }
         platform.launchPicker = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+        platform.launchCamera = { uri -> camera.launch(uri) }
         platform.launchFilePicker = {
             if (android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
                 notifications.launch(android.Manifest.permission.POST_NOTIFICATIONS)

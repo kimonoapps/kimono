@@ -34,6 +34,10 @@ interface Platform {
     val photoPicker: Boolean get() = false
     /** Asks for photos and videos from the phone's photo picker. Empty if they changed their mind. */
     suspend fun pickMedia(): List<PickedFile> = pickFiles()
+    /** Whether attaching can take a photo with the phone's camera ([takePhoto]). */
+    val camera: Boolean get() = false
+    /** Opens the camera for one photo; empty if they changed their mind. */
+    suspend fun takePhoto(): List<PickedFile> = emptyList()
     /** Uploads the OS carries on with after the app closes; null to upload while the app is open. */
     val uploads: Uploads?
     /** This app's build number (Android's versionCode, iOS's CFBundleVersion), for knowing when to update. */

@@ -119,6 +119,12 @@ final class Host: NSObject, IosHost, @unchecked Sendable {
         DispatchQueue.main.async { Attach.shared.photos(done) }
     }
 
+    func hasCamera() -> Bool { UIImagePickerController.isSourceTypeAvailable(.camera) }
+
+    func takePhoto(done: @escaping ([IosPickedFile]) -> Void) {
+        DispatchQueue.main.async { Attach.shared.camera(done) }
+    }
+
     func readFile(path: String, offset: Int64, max: Int32) -> Data {
         guard let handle = FileHandle(forReadingAtPath: path) else { return Data() }
         defer { try? handle.close() }

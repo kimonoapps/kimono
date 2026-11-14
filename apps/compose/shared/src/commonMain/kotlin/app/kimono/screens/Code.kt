@@ -615,6 +615,7 @@ fun NewChatScreen(code: Code, drive: Drive, platform: Platform, admin: Boolean, 
                             onDevice = { hold { platform.pickFiles() } },
                             onDrive = if (marks.driveApp != null || marks.spaces.isNotEmpty()) ({ choosing = true }) else null,
                             onPhotos = if (platform.photoPicker) ({ hold { platform.pickMedia() } }) else null,
+                            onCamera = if (platform.camera) ({ hold { platform.takePhoto() } }) else null,
                         )
                         MessageField(
                             /* Writing a new chat makes its sandbox now, so its first message doesn't wait for it. */
@@ -776,11 +777,12 @@ internal fun AccessChip(code: Code) {
  * Where the phone has its own photo picker ([onPhotos]), Photos and Files stand apart in the menu.
  */
 @Composable
-internal fun AttachMenu(onDevice: () -> Unit, onDrive: (() -> Unit)?, enabled: Boolean = true, onPhotos: (() -> Unit)? = null) {
+internal fun AttachMenu(onDevice: () -> Unit, onDrive: (() -> Unit)?, enabled: Boolean = true, onPhotos: (() -> Unit)? = null, onCamera: (() -> Unit)? = null) {
     var open by remember { mutableStateOf(false) }
     Box {
-        IconButton(onClick = { if (onDrive != null || onPhotos != null) open = true else onDevice() }, enabled = enabled, modifier = Modifier.padding(vertical = 2.dp).size(40.dp)) { Icon(kimonoIcon("clip"), "Attach files") }
+        IconButton(onClick = { if (onDrive != null || onPhotos != null || onCamera != null) open = true else onDevice() }, enabled = enabled, modifier = Modifier.padding(vertical = 2.dp).size(40.dp)) { Icon(kimonoIcon("clip"), "Attach files") }
         InkMenu(expanded = open, onDismissRequest = { open = false }) {
+            if (onCamera != null) InkMenuItem("Camera", icon = "camera", onClick = { open = false; onCamera() })
             if (onPhotos != null) {
                 InkMenuItem("Photos", icon = "image", onClick = { open = false; onPhotos() })
                 InkMenuItem("Files", icon = "file", onClick = { open = false; onDevice() })
