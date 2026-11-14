@@ -13,8 +13,17 @@ const namePrompt = "You name chats. Reply with only a short title for the conver
 
 // nameAgent asks Haiku for a chat's name, once, with no tools, no MCP and no
 // session left behind: Claude Code itself, so the plan's credential is used
-// the way it is meant to be.
-const nameAgent = `exec claude -p "$KIMONO_PROMPT" --model "$KIMONO_MODEL" --system-prompt "$KIMONO_SYSTEM" --tools "" --strict-mcp-config --no-session-persistence --output-format text`
+// the way it is meant to be. Everyone's chats are named in this one container, so
+// each call gets a home of its own, gone when it returns: nothing Claude Code
+// writes from one person's conversation is there for the next. A call cut off at its
+// timeout can't clean up after itself, so each also sweeps away homes left over a while.
+const nameAgent = `find /tmp -maxdepth 1 -name 'name.*' -mmin +2 -exec rm -rf {} + 2>/dev/null
+h=$(mktemp -d /tmp/name.XXXXXXXX) || exit 1
+trap 'rm -rf "$h"' HUP INT TERM
+HOME="$h" claude -p "$KIMONO_PROMPT" --model "$KIMONO_MODEL" --system-prompt "$KIMONO_SYSTEM" --tools "" --strict-mcp-config --no-session-persistence --output-format text
+status=$?
+rm -rf "$h"
+exit $status`
 
 // namerName is the one container chats are named in: from the sandbox image, so it
 // has Claude Code, but no one's files, no tools and no connections, shared by every
