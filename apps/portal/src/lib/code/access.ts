@@ -91,13 +91,30 @@ function filesUnder(node: DriveNode, owner: string, tooBig: DriveNode[] = []): {
 type Opened = { workspace_id: string; node_id: string; space_id: string; dir: string };
 type Request = { id: string; workspace_id: string; space_name: string; path: string; need: Need; why: string; space_id: string | null; node_id: string | null; state: string };
 
-function grantsOf(db: DatabaseSync, username: string): Grant[] {
+function storedGrants(db: DatabaseSync, username: string): Grant[] {
   return (db.prepare("SELECT id, username, workspace_id, space_id, node_id, need FROM grants WHERE username = ?").all(username) as { id: string; username: string; workspace_id: string | null; space_id: string; node_id: string; need: Need }[])
     .map((g) => ({ id: g.id, username: g.username, workspaceId: g.workspace_id, spaceId: g.space_id, nodeId: g.node_id, need: g.need }));
 }
 
+/**
+ * Every grant, with the default: a space opens without asking, to read and
+ * change (read where the person only views it), unless they chose "Asks first"
+ * for it or set it themself. The chats space keeps its own read-only rule.
+ */
+function grantsOf(db: DatabaseSync, username: string): Grant[] {
+  const stored = storedGrants(db, username);
+  let spaces: ReturnType<typeof spacesOf> = [];
+  try { spaces = spacesOf(driveDb(), username); } catch { return stored; }
+  const asks = new Set((db.prepare("SELECT space_id FROM access_asks WHERE username = ?").all(username) as { space_id: string }[]).map((r) => r.space_id));
+  const code = codeSpaceOf(db, username);
+  const set = new Set(stored.filter((g) => g.workspaceId === null).map((g) => g.nodeId));
+  const defaults = spaces.filter((s) => s.id !== code && !asks.has(s.id) && !set.has(s.rootId))
+    .map((s): Grant => ({ id: `default-${s.id}`, username, workspaceId: null, spaceId: s.id, nodeId: s.rootId, need: s.role === "viewer" ? "read" : "change" }));
+  return [...stored, ...defaults];
+}
+
 function addGrant(db: DatabaseSync, username: string, workspaceId: string | null, spaceId: string, nodeId: string, need: Need) {
-  const existing = grantsOf(db, username).find((g) => g.workspaceId === workspaceId && g.nodeId === nodeId);
+  const existing = storedGrants(db, username).find((g) => g.workspaceId === workspaceId && g.nodeId === nodeId);
   if (existing) {
     if (existing.need !== "change" && need === "change") db.prepare("UPDATE grants SET need = 'change' WHERE id = ?").run(existing.id);
     return existing.id;
@@ -389,11 +406,13 @@ export function alwaysGrants(db: DatabaseSync, username: string): AlwaysGrant[] 
   });
 }
 
-/** Always allow a whole space without asking, at [need]; null takes it back. */
+/** Always allow a whole space without asking, at [need]; null asks first from now on. */
 export function setSpaceAuto(db: DatabaseSync, username: string, spaceId: string, need: Need | null) {
   const space = spacesOf(driveDb(), username).find((s) => s.id === spaceId);
   if (!space) throw new CodeProblem("That space isn't yours to share.", 404);
   db.prepare("DELETE FROM grants WHERE username = ? AND workspace_id IS NULL AND node_id = ?").run(username, space.rootId);
+  if (need) db.prepare("DELETE FROM access_asks WHERE username = ? AND space_id = ?").run(username, space.id);
+  else db.prepare("INSERT OR IGNORE INTO access_asks (username, space_id, created_at) VALUES (?, ?, ?)").run(username, space.id, Date.now());
   if (need) addGrant(db, username, null, space.id, space.rootId, need === "change" && space.role === "viewer" ? "read" : need);
 }
 

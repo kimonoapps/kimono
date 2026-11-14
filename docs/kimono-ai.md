@@ -214,7 +214,8 @@ see nothing inside a space until it is allowed.
 - **What Kimono AI can use** (the key button by Tasks): per space, "Asks first",
   "May read" or "May read and change" without asking, and the folders and files
   always allowed, each with "Take back". Taking one back empties every chat's
-  sandbox of it at once.
+  sandbox of it at once. A space nobody set reads and changes without asking
+  (reads, where they only view it); "Asks first" is kept in `access_asks`.
 - Security rests on what Portal copies in, never on the sandbox: a request it
   fakes, or an answer it fakes in its own outbox, opens nothing.
 - Tables: `access_requests`, `grants` (a chat's, or always when it has no chat),

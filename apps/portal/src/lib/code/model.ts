@@ -288,6 +288,8 @@ export function migrate(db: DatabaseSync) {
       COMMIT;
     `);
   }
+  /* Spaces the person chose "Asks first" for (lib/code/access.ts): every other space opens without asking. */
+  db.exec("CREATE TABLE IF NOT EXISTS access_asks (username TEXT NOT NULL, space_id TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (username, space_id))");
   /* A memory written as a page has a title of its own (lib/code/memory.ts). */
   if (!(db.prepare("PRAGMA table_info(memories)").all() as { name: string }[]).some((c) => c.name === "title")) {
     db.exec("ALTER TABLE memories ADD COLUMN title TEXT");

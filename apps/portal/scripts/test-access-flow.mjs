@@ -73,6 +73,10 @@ const db = new DatabaseSync(':memory:');
 model.migrate(db);
 const ws = model.createWorkspace(db, 'mina', { repoOwner: 'mina', repoName: 'notes', base: 'main', prompt: 'Sort my notes' });
 
+/* These tests are about asking: every space she has asks first (none set opens without asking, last test). */
+const asksFirst = (space) => access.setSpaceAuto(db, 'mina', space.id, null);
+asksFirst(photos); asksFirst(family);
+
 const text = (p) => sandboxFiles.get(p)?.toString();
 const driveText = async (id) => (await import('node:fs')).readFileSync(drive.blobPath(drive.root, drive.nodeFor(ddb, id, 'mina').blob), 'utf8');
 
@@ -217,6 +221,7 @@ test('an owner with a capital in their name can answer their own chat', async ()
 
 test('a video over the old 50 MB cap streams in whole, with its length said', async () => {
   const school = drive.createSpace(ddb, 'mina', { name: 'School' });
+  asksFirst(school);
   const big = Buffer.alloc(60 * 1024 * 1024, 7);
   const blob = drive.newId();
   const path = drive.blobPath(drive.root, blob);
@@ -244,6 +249,7 @@ test('a video over the old 50 MB cap streams in whole, with its length said', as
 
 test("a file the sandbox hasn't room for is named to the agent, once", async () => {
   const space = drive.createSpace(ddb, 'mina', { name: 'Clips' });
+  asksFirst(space);
   await put(space.rootId, 'mina', 'long.mp4', 'x'.repeat(5000));
   const ws7 = model.createWorkspace(db, 'mina', { prompt: 'Clips' });
   sandboxFiles.clear();
@@ -263,6 +269,7 @@ test("a file the sandbox hasn't room for is named to the agent, once", async () 
 
 test('a file over 4 GB stays in Drive, and the agent hears why', async () => {
   const space = drive.createSpace(ddb, 'mina', { name: 'Raw' });
+  asksFirst(space);
   drive.addFile(ddb, space.rootId, 'mina', { name: 'huge.mov', size: 5 * 1024 ** 3, mime: 'video/quicktime', blob: drive.newId() });
   const ws8 = model.createWorkspace(db, 'mina', { prompt: 'Raw' });
   sandboxFiles.clear();
@@ -270,4 +277,28 @@ test('a file over 4 GB stays in Drive, and the agent hears why', async () => {
   const answered = await access.answer(db, config, ws8, 'mina', asked.event.id, 'chat');
   assert.match(answered.carryOn, /huge\.mov \(in their Drive but not here: it's 5\.0 GB, and files over 4 GB stay in Drive\)/);
   assert.equal((await access.syncOpened(db, config, ws8)).length, 0, 'not said again');
+});
+
+test("a space nobody set opens without asking, to read and change; one they only view, to read", async () => {
+  const trips = drive.createSpace(ddb, 'mina', { name: 'Trips' });
+  await put(trips.rootId, 'mina', 'rome.txt', 'roma');
+  const shared = drive.createSpace(ddb, 'sam', { name: 'Recipes', members: [{ username: 'mina', role: 'viewer' }] });
+  await put(shared.rootId, 'sam', 'soup.txt', 'leek');
+  const ws9 = model.createWorkspace(db, 'mina', { prompt: 'Trips' });
+  sandboxFiles.clear();
+  const asked = await access.onRequest(db, config, ws9, null, { id: '1-0000000c', space: 'Trips', path: '', need: 'change', why: 'Plan.' });
+  assert.equal(asked.event.state, 'auto');
+  assert.equal(text('.kimono/files/Trips/rome.txt'), 'roma');
+  sandboxFiles.set('.kimono/files/Trips/rome.txt', Buffer.from('roma, planned'));
+  await access.syncOpened(db, config, ws9);
+  const rome = drive.childrenOf(ddb, trips.rootId, 'mina').children.find((c) => c.name === 'rome.txt');
+  assert.equal(await driveText(rome.id), 'roma, planned', 'its edits reach Drive');
+  const viewing = await access.onRequest(db, config, ws9, null, { id: '1-0000000d', space: 'Recipes', path: '', need: 'change', why: 'Cook.' });
+  assert.equal(viewing.event.state, 'pending', 'change in a space she only views still asks');
+  const reading = await access.onRequest(db, config, ws9, null, { id: '1-0000000e', space: 'Recipes', path: '', need: 'read', why: 'Cook.' });
+  assert.equal(reading.event.state, 'auto');
+  assert.equal(access.alwaysGrants(db, 'mina').find((g) => g.spaceId === trips.id && !g.path)?.need, 'change', 'settings show it allowed');
+  asksFirst(trips);
+  const again = await access.onRequest(db, config, ws9, null, { id: '1-0000000f', space: 'Trips', path: '', need: 'read', why: 'Again.' });
+  assert.equal(again.event.state, 'pending', 'once set to ask first, it asks');
 });
