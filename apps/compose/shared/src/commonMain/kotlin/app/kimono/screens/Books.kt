@@ -306,6 +306,8 @@ fun BooksHomeScreen(books: Books, platform: app.kimono.data.Platform, firstName:
     var home by remember { mutableStateOf<BooksHome?>(books.knownHome()) }
     var problem by remember { mutableStateOf<String?>(null) }
     var open by remember { mutableStateOf<String?>(null) }
+    /* A book's link opened in the app: its sheet. */
+    LaunchedEffect(Unit) { app.kimono.BookAsk.key.collect { key -> if (key != null) { open = key; app.kimono.BookAsk.key.value = null } } }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     suspend fun load() { runCatching { books.home() }.onSuccess { home = it; problem = null }.onFailure { if (home == null) problem = it.message ?: "Books couldn't load." } }
@@ -482,6 +484,8 @@ fun BooksShelfScreen(books: Books, platform: app.kimono.data.Platform, openSearc
     var shelf by remember { mutableStateOf<List<ShelfItem>?>(books.knownHome()?.shelf) }
     var only by remember { mutableStateOf<String?>(null) }
     var open by remember { mutableStateOf<String?>(null) }
+    /* A book's link opened in the app: its sheet. */
+    LaunchedEffect(Unit) { app.kimono.BookAsk.key.collect { key -> if (key != null) { open = key; app.kimono.BookAsk.key.value = null } } }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     suspend fun load() { runCatching { books.shelf() }.onSuccess { shelf = it } }

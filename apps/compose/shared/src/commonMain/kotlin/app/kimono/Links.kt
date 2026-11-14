@@ -1,6 +1,7 @@
 package app.kimono
 
 import io.ktor.http.Url
+import io.ktor.http.decodeURLPart
 import io.ktor.http.parseQueryString
 
 /*
@@ -37,10 +38,27 @@ fun routeOfLink(link: String): String? {
             id(query["space"]) != null -> "space/${query["space"]}"
             else -> "drive"
         }
-        path == "/books" -> if (query["tab"] == "shelf") "books/shelf" else "books"
+        /* A book's page opens as its sheet over Books. */
+        path == "/books" -> {
+            BookAsk.key.value = query["b"]?.takeIf { it.isNotBlank() }
+            if (query["tab"] == "shelf") "books/shelf" else "books"
+        }
+        path == "/account" -> "you"
+        path == "/account/details" -> "details"
+        path == "/account/devices" -> "devices"
+        path == "/account/password" -> "password"
+        path == "/account/settings" -> "settings"
+        path == "/account/friends" -> "friends"
+        path.startsWith("/account/people/") -> path.removePrefix("/account/people/").decodeURLPart().takeIf { Regex("[A-Za-z0-9._@-]{1,150}").matches(it) }?.let { "people/$it" }
+        path == "/vpn" -> "vpn"
+        path == "/vpn/people" -> "vpn/people"
+        path == "/vpn/connect" -> "vpn/connect"
         else -> null
     }
 }
+
+/** A book a link asked for: Books opens its sheet, then clears it. */
+object BookAsk { val key = kotlinx.coroutines.flow.MutableStateFlow<String?>(null) }
 
 /** Opens a Kimono web address in the app, once signed in. False when the app has no screen for it. */
 fun openLink(link: String): Boolean {

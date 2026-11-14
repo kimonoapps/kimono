@@ -8,7 +8,7 @@
  */
 const kimonoIos = "DF8FQFRCS5.app.kimono.compose";
 
-const opensInApp = ["/code", "/notes", "/drive", "/books", "/ai/c/*", "/ai/a/*"];
+const opensInApp = ["/code", "/notes", "/drive", "/books", "/ai/c/*", "/ai/a/*", "/account", "/account/*", "/vpn", "/vpn/*"];
 
 export function GET() {
   return Response.json({

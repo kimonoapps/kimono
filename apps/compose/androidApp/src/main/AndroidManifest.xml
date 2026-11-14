@@ -54,6 +54,10 @@
                 <data android:path="/books" />
                 <data android:pathPrefix="/ai/c/" />
                 <data android:pathPrefix="/ai/a/" />
+                <data android:path="/account" />
+                <data android:pathPrefix="/account/" />
+                <data android:path="/vpn" />
+                <data android:pathPrefix="/vpn/" />
             </intent-filter>
             <!-- Kimono in the share sheet: photos, videos and files from any app. -->
             <intent-filter android:label="Kimono">
