@@ -8,7 +8,7 @@ import { meshContext } from "./shared";
 import { requestServiceRestart } from "@/lib/kimono-services";
 import { redirect } from "next/navigation";
 
-export const metadata = { title: "Devices · Kimono VPN" };
+export const metadata = { title: { absolute: "Devices · Kimono VPN" } };
 
 /** An expiry only matters once it is close enough to interrupt someone. */
 function describeExpiry(expiry: string | null) {

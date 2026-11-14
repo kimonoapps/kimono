@@ -1,5 +1,6 @@
 "use client";
 
+import { useTabTitle } from "@/components/tab-title";
 import { SkeletonRows } from "@/components/skeleton";
 import { rise, riseWhenReady, slide } from "@/components/motion";
 
@@ -175,6 +176,8 @@ export function DriveApp({ me }: { me: Me }) {
 
   const go = useCallback((to: Record<string, string | null>) => goTo("/drive", to), []);
   const current = spaces?.find((s) => s.id === spaceParam) ?? (view ? null : spaces?.[0] ?? null);
+  /* Trash, Recent and a space's settings name the tab here; a space or Shared with you names it in SpaceView. */
+  useTabTitle(view === "trash" ? "Trash" : view === "recent" ? "Recent" : view === "settings" && current ? `${current.name} settings` : null, "Kimono Drive");
   /* Kimono's own spaces: the AI one and your Notes one, apart from the spaces you made. */
   const isKimono = (s: Space) => Boolean(s.code || s.notes);
   const kimono = [...(spaces ?? []).filter((s) => s.code), ...(spaces ?? []).filter((s) => !s.code && isKimono(s))];
@@ -426,6 +429,8 @@ function SpaceView({ space, guest = null, room = false, me, folderId, openFile, 
   }, [folder, found, sort]);
   const chosen = rows.filter((n) => selected.has(n.id));
   const opened = openFile ? rows.find((n) => n.id === openFile) ?? null : null;
+  /* The tab names the file that's open, else the folder, else the space. */
+  useTabTitle(opened?.name ?? (folder?.path.length ? folder.folder.name : space.name), "Kimono Drive");
   const members = detail?.memberList ?? [];
   const menuNode = menu ? rows.find((n) => n.id === menu.id) ?? null : null;
   const here = folder?.folder.id ?? folderId;

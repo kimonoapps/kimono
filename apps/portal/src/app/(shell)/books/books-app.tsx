@@ -1,5 +1,6 @@
 "use client";
 
+import { useTabTitle } from "@/components/tab-title";
 import { createContext, startTransition, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { InkWave, MorphLoader } from "@kimono/ui";
 import Markdown, { type Components } from "react-markdown";
@@ -529,6 +530,8 @@ function BookSheet({ bookKey, onClose, onOpen, onPlaced }: { bookKey: string; on
   const [reading, setReading] = useState<BookFileInfo | null>(null);
   const sheet = useRef<HTMLDivElement>(null);
   const tilt = useRef<HTMLDivElement>(null);
+  /* The tab names the book that's open. */
+  useTabTitle(page?.book.title, "Kimono Books");
 
   useEffect(() => {
     booksApi.book(bookKey).then(setPage).catch((e: unknown) => setProblem(e instanceof BooksError ? e.message : "This book didn't open."));

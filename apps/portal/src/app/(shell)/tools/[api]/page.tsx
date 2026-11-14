@@ -1,5 +1,5 @@
 import { DocumentationPage } from "../documentation-page";
-export const metadata = { title: "Kimono Tools · API reference" };
+export const metadata = { title: { absolute: "Kimono Tools" } };
 export default async function ApiPage({ params, searchParams }: { params: Promise<{ api: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { api } = await params;
   const query = await searchParams;

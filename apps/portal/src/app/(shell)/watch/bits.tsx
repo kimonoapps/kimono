@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useTabTitle as useSharedTabTitle } from "@/components/tab-title";
 import type { Card, Prefs, Rating, TitleView } from "./api";
 import { AppIcon } from "@/components/icons";
 import { Icon } from "./icons";
@@ -165,21 +166,10 @@ export function WatchBloom({ accent, className }: { accent: string; className?: 
   return <span className={cx("kw-bloom", className)} aria-hidden="true"><AppIcon app={{ id: watchId, icon: "play", accent }} /></span>;
 }
 
-/* ───── The tab's title: "Kimono Watch", or what's open in front ───── */
+/* ───── The tab's title: "Kimono Watch", or what's open in front (components/tab-title.ts) ───── */
 
-const titles: { key: number; name: string }[] = [];
-let titleKey = 0;
-const showTitle = () => { const top = titles[titles.length - 1]; document.title = top ? `${top.name} · Kimono Watch` : "Kimono Watch"; };
-/** While mounted with a name, the tab reads "{name} · Kimono Watch"; the latest one shown wins, and leaving puts back the one before. */
-export function useTabTitle(name: string | null | undefined) {
-  useEffect(() => {
-    if (!name) return;
-    const key = ++titleKey;
-    titles.push({ key, name });
-    showTitle();
-    return () => { const at = titles.findIndex((t) => t.key === key); if (at >= 0) titles.splice(at, 1); showTitle(); };
-  }, [name]);
-}
+/** While mounted with a name, the tab reads "{name} · Kimono Watch". */
+export const useTabTitle = (name: string | null | undefined) => useSharedTabTitle(name, "Kimono Watch");
 
 /* ───── Waiting: Material 3 Expressive's loading indicator (components/loading-indicator.tsx) ───── */
 

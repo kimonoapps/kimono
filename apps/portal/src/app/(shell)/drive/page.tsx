@@ -7,7 +7,7 @@ import { getPlatformSettings } from "@/lib/settings";
 import { DriveApp } from "./drive-app";
 import "./drive.css";
 
-export const metadata = { title: "Kimono Drive" };
+export const metadata = { title: { absolute: "Kimono Drive" } };
 
 /** Kimono Drive on the web: the spaces you share files in. */
 export default async function DrivePage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {

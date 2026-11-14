@@ -8,7 +8,7 @@ import { getPlatformSettings } from "@/lib/settings";
 import { NotesApp, NotesOff } from "./notes-app";
 import "./notes.css";
 
-export const metadata = { title: "Kimono Notes" };
+export const metadata = { title: { absolute: "Kimono Notes" } };
 
 /** Kimono Notes on the web: notebooks of notes, kept in Drive. */
 export default async function NotesPage() {

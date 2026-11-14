@@ -1,5 +1,6 @@
 "use client";
 
+import { useTabTitle } from "@/components/tab-title";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams } from "next/navigation";
@@ -318,6 +319,9 @@ export function NotesApp({ me, publicLinks }: { me: string; publicLinks: boolean
   const openNotebook = openMeta ? (openMeta.notebookId ? notebookOf(openMeta.notebookId) : null)
     : editing ? (editing.parent ? notebookHolding(editing.parent) : lib?.notebooks.find((n) => n.role !== "viewer" && !n.sharedWithYou) ?? null) : null;
   const showing = Boolean(openId);
+  /* The tab names the note that's open, or the notebook or section you're in. */
+  useTabTitle(openId === "new" ? "New note" : openMeta ? openMeta.title || "Untitled"
+    : place.kind === "section" ? place.section.name : place.kind === "notebook" ? place.notebook.name : null, "Kimono Notes");
   /*
    * With no note open the notebooks stand beside the list; on a note they
    * narrow to a rail of marks, and widen back in place from it (staying wide

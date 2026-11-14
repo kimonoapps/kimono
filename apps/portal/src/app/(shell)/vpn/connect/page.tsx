@@ -12,7 +12,7 @@ import { vpnMember } from "@/lib/vpn-view";
    the address, where history and the proxy's logs would keep it. */
 const keyCookie = "kimono-vpn-key";
 
-export const metadata = { title: "Connect · Kimono VPN" };
+export const metadata = { title: { absolute: "Connect · Kimono VPN" } };
 
 export default async function ConnectPage({ searchParams }: { searchParams: Promise<{ minted?: string; error?: string }> }) {
   const { session, settings, identity, member } = await meshContext();

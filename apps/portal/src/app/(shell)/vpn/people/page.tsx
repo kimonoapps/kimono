@@ -9,7 +9,7 @@ import { getPlatformSettings } from "@/lib/settings";
 import { meshContext } from "../shared";
 import { redirect } from "next/navigation";
 
-export const metadata = { title: "People · Kimono VPN" };
+export const metadata = { title: { absolute: "People · Kimono VPN" } };
 
 export default async function PeoplePage({ searchParams }: { searchParams: Promise<{ error?: string; invited?: string }> }) {
   const { session, settings, identity, members, member } = await meshContext();

@@ -1,5 +1,6 @@
 "use client";
 
+import { useTabTitle } from "@/components/tab-title";
 import { type ClipboardEvent, createContext, Fragment, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { AppBloom, type AppIdentity, BusyFace, Choice, cx, InkBlot, InkCard, InkWave, InkLoader, Seal } from "@kimono/ui";
@@ -498,6 +499,9 @@ export function CodeApp({ blocked, admin, driveApp, me }: { blocked: string | nu
   }, [load]);
 
   const workspace = workspaces?.find((w) => w.id === current) ?? shared.chats.find((w) => w.id === current) ?? null;
+  /* The tab names the chat that's open (once it has a name), or the page. */
+  useTabTitle(workspace ? (workspace.namingUntil && Date.now() < workspace.namingUntil ? null : workspace.title)
+    : showingConnections ? "Connections" : showingMemory ? "For you" : showingArchived ? "Archived" : null, "Kimono AI");
   const typingInList = useTypingInList(useMemo(() => [...(workspaces ?? []), ...shared.chats].some((w) => (w.people?.length ?? 0) > 0), [workspaces, shared.chats]));
   /* Archived chats leave the list for their own page. */
   const archived = useMemo(() => (workspaces ?? []).filter((w) => w.archivedAt).toSorted((a, b) => (b.archivedAt ?? 0) - (a.archivedAt ?? 0)), [workspaces]);

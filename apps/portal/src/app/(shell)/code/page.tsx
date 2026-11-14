@@ -8,7 +8,7 @@ import { driveIdentity } from "@/lib/drive/config";
 import { CodeApp } from "./code-app";
 import "./code.css";
 
-export const metadata = { title: "Kimono AI" };
+export const metadata = { title: { absolute: "Kimono AI" } };
 
 /** Kimono AI: one assistant for the household, in a sandbox of its own; projects on Kimono Git for administrators. */
 export default async function CodePage() {
