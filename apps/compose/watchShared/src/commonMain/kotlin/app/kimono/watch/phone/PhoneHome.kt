@@ -68,6 +68,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.kimono.watch.data.Profile
 import app.kimono.watch.model.Card
+import app.kimono.watch.model.FreshEpisode
 import app.kimono.watch.model.Row as WatchRow
 import app.kimono.watch.theme.Night
 import app.kimono.watch.theme.display
@@ -222,20 +223,33 @@ private fun Hero(featured: Card?, rows: List<WatchRow>, go: Go, active: Boolean)
         Box(Modifier.fillMaxWidth().aspectRatio(3f / 4f).shadow(40.dp, RoundedCornerShape(14.dp), ambientColor = Color.Black, spotColor = Color.Black).clip(RoundedCornerShape(14.dp))) {
             Img(featured.poster ?: featured.backdropLarge, Modifier.fillMaxSize())
             BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                LocalWatch.current.preview.Show(featured.id, if (featured.isFilm) 0 else 1, if (featured.isFilm) 0 else 1, muted, active, { playing = it }, Modifier.requiredWidth(maxHeight * 16f / 9f).height(maxHeight))
+                LocalWatch.current.preview.Show(featured.id, featured.fresh?.season ?: if (featured.isFilm) 0 else 1, featured.fresh?.episode ?: if (featured.isFilm) 0 else 1, muted, active, { playing = it }, Modifier.requiredWidth(maxHeight * 16f / 9f).height(maxHeight))
             }
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.45f to Color(0x00110C0A), 1f to Color(0xEB110C0A))))
             Column(Modifier.align(Alignment.BottomCenter).padding(start = 16.dp, end = 16.dp, bottom = 18.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Logo(featured.name, featured.logo, 48, Modifier.graphicsLayer { scaleX = logoScale; scaleY = logoScale; transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f) }, center = true, maxHeight = 96.dp)
-                if (rank != null) RankLine(rank, featured.shelf)
+                val fresh = featured.fresh
+                if (fresh != null) FreshLine(fresh) else if (rank != null) RankLine(rank, featured.shelf)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    PaperButton(if (resuming) "Resume" else "Play", Ic.play, { go.play(featured.id, null, null) }, Modifier.weight(1f))
+                    PaperButton(heroPlay(fresh, resuming), Ic.play, { go.play(featured.id, fresh?.season, fresh?.episode) }, Modifier.weight(1f))
                     PaperButton("More info", Ic.info, { go.open(featured) }, Modifier.weight(1f), tonal = true)
                 }
             }
             RingButton(if (muted) Ic.mute else Ic.vol, { muted = !muted }, Modifier.align(Alignment.TopEnd).padding(12.dp))
         }
     }
+    }
+}
+
+/** The hero's Play: the new episode by name, Resume, or Play. */
+fun heroPlay(fresh: FreshEpisode?, resuming: Boolean) = fresh?.let { "Play ${it.label}" } ?: if (resuming) "Resume" else "Play"
+
+/** Under the hero's logo when it leads with a new episode: a NEW stamp and "S6:E9 out today". */
+@Composable
+fun FreshLine(fresh: FreshEpisode, size: Int = 15) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("NEW", style = ui(11, FontWeight.Bold, Night.paper).copy(letterSpacing = 0.6.sp), modifier = Modifier.clip(RoundedCornerShape(4.dp)).background(Night.suoDeep).padding(horizontal = 8.dp, vertical = 3.dp))
+        Text("${fresh.label} ${fresh.out}", style = ui(size, FontWeight.Bold))
     }
 }
 
@@ -259,6 +273,7 @@ private fun RailRow(row: WatchRow, profile: Profile, go: Go) {
             when (row.kind) {
                 "continue" -> items(row.items.filter { it.id !in forgotten }, key = { it.id }, contentType = { "continue" }) { ContinueCard(it, go) }
                 "top" -> itemsIndexed(row.items, key = { _, c -> c.id }, contentType = { _, _ -> "top" }) { i, c -> TopTen(i + 1, c, go) }
+                "fresh" -> items(row.items, key = { it.id }, contentType = { "fresh" }) { FreshCard(it, go) }
                 else -> items(row.items, key = { it.id }, contentType = { "poster" }) { PosterCard(it, go) }
             }
         }
@@ -295,6 +310,24 @@ private fun ContinueCard(card: Card, go: Go) {
             }
             Box(Modifier.size(40.dp).clip(CircleShape).clickableScale({ go.play(card.id, card.season?.takeIf { it > 0 }, card.episode?.takeIf { it > 0 }) }), contentAlignment = Alignment.Center) { I(Ic.play) }
             TileMenu(card, go)
+        }
+    }
+}
+
+/** A Just out tile: the episode's still, the show, "S6:E9 · Today"; ▶ plays that episode. */
+@Composable
+private fun FreshCard(card: Card, go: Go) {
+    Column(Modifier.width(168.dp).clip(RoundedCornerShape(8.dp)).background(Night.surface)) {
+        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clickableScale({ go.open(card) })) {
+            Img(card.still ?: card.backdrop ?: card.poster, Modifier.fillMaxSize())
+            Ribbon(if (card.aired == "Today") "New today" else "New episode", Modifier.align(Alignment.TopStart).padding(start = 10.dp))
+        }
+        Row(Modifier.padding(start = 12.dp, end = 6.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(card.name, style = ui(14, FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(listOfNotNull(card.label, card.aired).joinToString(" · "), style = ui(13, color = Night.fg2), maxLines = 1)
+            }
+            Box(Modifier.size(40.dp).clip(CircleShape).clickableScale({ go.play(card.id, card.season, card.episode) }), contentAlignment = Alignment.Center) { I(Ic.play) }
         }
     }
 }

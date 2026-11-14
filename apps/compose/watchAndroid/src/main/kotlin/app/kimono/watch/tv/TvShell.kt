@@ -71,7 +71,9 @@ import app.kimono.watch.model.Row as WatchRow
 import app.kimono.watch.phone.ComingArticle
 import app.kimono.watch.phone.FriendTasteScreen
 import app.kimono.watch.phone.Go
+import app.kimono.watch.phone.FreshLine
 import app.kimono.watch.phone.RankLine
+import app.kimono.watch.phone.heroPlay
 import app.kimono.watch.phone.SearchScreen
 import app.kimono.watch.phone.TitleScreen
 import app.kimono.watch.theme.Night
@@ -208,7 +210,7 @@ private fun TvHero(featured: Card?, rows: List<WatchRow>, go: Go, active: Boolea
     BoxWithConstraints(Modifier.fillMaxWidth().height(440.dp)) {
         if (featured != null) {
             Img(featured.backdropLarge ?: featured.backdrop, Modifier.fillMaxSize())
-            PreviewVideo(featured.id, if (featured.isFilm) 0 else 1, if (featured.isFilm) 0 else 1, true, active, { playing = it }, Modifier.requiredWidth(maxOf(maxWidth, maxHeight * 16f / 9f)).fillMaxHeight().align(Alignment.Center))
+            PreviewVideo(featured.id, featured.fresh?.season ?: if (featured.isFilm) 0 else 1, featured.fresh?.episode ?: if (featured.isFilm) 0 else 1, true, active, { playing = it }, Modifier.requiredWidth(maxOf(maxWidth, maxHeight * 16f / 9f)).fillMaxHeight().align(Alignment.Center))
         }
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color(0x8C110C0A), 0.22f to Color.Transparent, 0.45f to Color.Transparent, 0.82f to Color(0xD9110C0A), 1f to Night.bg)))
         Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to Color(0xB3110C0A), 0.55f to Color.Transparent)))
@@ -226,12 +228,13 @@ private fun TvHero(featured: Card?, rows: List<WatchRow>, go: Go, active: Boolea
         if (featured == null) return@BoxWithConstraints
         Column(Modifier.align(Alignment.BottomStart).padding(start = gutter, bottom = 48.dp).widthIn(max = 560.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Logo(featured.name, featured.logo, 64, Modifier.graphicsLayer { scaleX = logoScale; scaleY = logoScale; transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 1f) }, maxHeight = 120.dp)
-            if (rank != null) RankLine(rank, featured.shelf)
+            val fresh = featured.fresh
+            if (fresh != null) FreshLine(fresh) else if (rank != null) RankLine(rank, featured.shelf)
             featured.overview?.takeIf { it.isNotBlank() }?.let {
                 Text(it, style = ui(15, color = Night.fg2).copy(lineHeight = 23.sp), maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.graphicsLayer { alpha = tagline })
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                TvButton(if (resuming) "Resume" else "Play", Ic.play, { go.play(featured.id, null, null) }, Modifier.focusRequester(playFocus))
+                TvButton(heroPlay(fresh, resuming), Ic.play, { go.play(featured.id, fresh?.season, fresh?.episode) }, Modifier.focusRequester(playFocus))
                 TvButton("More info", Ic.info, { go.open(featured) }, tonal = true)
             }
         }
@@ -266,6 +269,7 @@ private fun TvRail(row: WatchRow, profile: Profile, go: Go) {
             when (row.kind) {
                 "continue" -> items(row.items.filter { it.id !in forgotten }, key = { it.id }, contentType = { "continue" }) { TvContinue(it, go) }
                 "top" -> itemsIndexed(row.items, key = { _, c -> c.id }, contentType = { _, _ -> "top" }) { i, c -> TvTopTen(i + 1, c, go) }
+                "fresh" -> items(row.items, key = { it.id }, contentType = { "fresh" }) { TvFresh(it, go) }
                 else -> items(row.items, key = { it.id }, contentType = { "card" }) { TvCard(it, go) }
             }
         }
@@ -305,6 +309,27 @@ private fun TvContinue(card: Card, go: Go) {
                 Text(card.name, style = ui(14, FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 val label = if (card.isFilm || (card.season ?: 0) == 0) "Film" else card.label ?: "S${card.season}:E${card.episode}"
                 Text("$label · ${card.left ?: 0}m left", style = ui(13, color = Night.fg2))
+            }
+        }
+    }
+}
+
+/** A Just out tile: the episode's still, the show, "S6:E9 · Today". Select plays that episode; hold opens the show. */
+@Composable
+private fun TvFresh(card: Card, go: Go) {
+    val shape = RoundedCornerShape(8.dp)
+    Surface(onClick = { go.play(card.id, card.season, card.episode) }, onLongClick = { go.open(card) }, modifier = Modifier.width(228.dp),
+        shape = ClickableSurfaceDefaults.shape(shape), colors = ClickableSurfaceDefaults.colors(containerColor = Night.surface, focusedContainerColor = Night.surface2),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
+        border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, Night.blush), inset = 0.dp, shape = shape))) {
+        Column {
+            Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
+                Img(card.still ?: card.backdrop ?: card.poster, Modifier.fillMaxSize())
+                Ribbon(if (card.aired == "Today") "New today" else "New episode", Modifier.align(Alignment.TopStart).padding(start = 10.dp))
+            }
+            Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                Text(card.name, style = ui(14, FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(listOfNotNull(card.label, card.aired).joinToString(" · "), style = ui(13, color = Night.fg2), maxLines = 1)
             }
         }
     }
