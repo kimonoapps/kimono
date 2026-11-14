@@ -40,15 +40,15 @@ data class Card(
     val overview: String? = null,
     /** The new episode the hero leads with, when it's one from Just out. */
     val fresh: FreshEpisode? = null,
-)
+) {
+    val isFilm get() = kind == "movie"
+}
 
 /** A new episode on Home's hero: which, how it's named, and when it came out. */
 @Serializable
 data class FreshEpisode(val season: Int, val episode: Int, val label: String, @SerialName("when") val aired: String) {
     /** "out today", "out yesterday", "out on Wednesday". */
     val out get() = if (aired == "Today" || aired == "Yesterday") "out ${aired.lowercase()}" else "out on $aired"
-} {
-    val isFilm get() = kind == "movie"
 }
 
 @Serializable
