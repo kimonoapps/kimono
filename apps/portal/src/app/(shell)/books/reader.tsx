@@ -64,7 +64,7 @@ const prefs = {
     try { dark = matchMedia("(prefers-color-scheme: dark)").matches; } catch { /* no window */ }
     return {
       paper: pick(v.paper, papers, dark ? "night" : "paper"), size: Number(v.size) || 100,
-      face: pick(v.face, faces, "serif"), leading: pick(v.leading, leadings, "normal"), width: pick(v.width, widths, "medium"),
+      face: pick(v.face, faces, "book"), leading: pick(v.leading, leadings, "normal"), width: pick(v.width, widths, "medium"),
       align: v.align === "left" ? "left" : "justify", layout: pick(v.layout, layouts, "page"),
     };
   },
