@@ -176,12 +176,14 @@ async function syncOnce(db: DatabaseSync, config: CodeConfig, workspace: Workspa
      else sent changed here is put back from Drive instead. */
   const othersTurn = readOnlyAsked || turnsByOwner(db, workspace.id, 1)[0] === false;
   const grants = grantsOf(db, owner);
+  /* The owner's other chats are theirs to read in their own turns, with no grant: never someone else's turn's. */
+  const ownChats = codeSpaceOf(db, owner);
   const { files: tree } = await (ahead ?? Promise.reject()).catch(() => sandbox.granted(config, workspace));
   const news: string[] = [];
   for (const o of opened) {
     let node: DriveNode | null = null;
     try { node = nodeFor(driveDb(), o.node_id, owner); } catch (error) { if (!(error instanceof DriveProblem)) throw error; }
-    const allowed = node ? needOn(grants, owner, workspace.id, chainOf(o.node_id)) : null;
+    const allowed = !node ? null : needOn(grants, owner, workspace.id, chainOf(o.node_id)) ?? (!othersTurn && o.space_id === ownChats ? "read" : null);
     const ceil = ceiling(o.space_id, owner);
     const need: Need | null = !allowed || !ceil ? null : allowed === "change" && ceil === "change" ? "change" : "read";
     const only = node?.kind === "file" ? node.name : undefined;
@@ -291,14 +293,18 @@ export async function onRequest(db: DatabaseSync, config: CodeConfig, workspace:
   db.prepare(`INSERT OR IGNORE INTO access_requests (id, workspace_id, turn_id, space_name, path, need, why, space_id, node_id, state, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, workspace.id, turn, base.space, line.path, line.need, line.why, found?.spaceId ?? null, found?.node.id ?? null, found ? "pending" : "missing", Date.now());
   if (!found) return { event: { kind: "access" as const, ...base, state: "missing" as const }, carryOn: `There's nothing called "${describe({ space_name: line.space, path: line.path })}" in their Drive. Check the name with them.` };
-  /* The person's own chats' files (their Code space) are every one of their chats' to use: no asking. */
+  /* The person's own chats' files (their Code space) are theirs to read from any of their chats without asking:
+     only what was asked for, only to read, and nothing stored, so a chat they share never carries it to someone
+     else (syncOnce closes it on another person's turn) and one chat's agent can't rewrite or trash another's files. */
   const ownChats = byOwner && found.spaceId === codeSpaceOf(db, owner);
-  if (ownChats && !grantsOf(db, owner).some((g) => g.workspaceId === null && g.nodeId === found.node.id)) {
-    const root = spacesOf(driveDb(), owner).find((s) => s.id === found.spaceId)?.rootId;
-    if (root) addGrant(db, owner, null, found.spaceId, root, "change");
-  }
   const grant = coveringGrant(grantsOf(db, owner), owner, workspace.id, chainOf(found.node.id), line.need);
   const ceil = ceiling(found.spaceId, owner);
+  if (ownChats && ceil && !(grant && line.need === "change" && ceil === "change")) {
+    db.prepare("UPDATE access_requests SET state = 'auto', answered_at = ? WHERE id = ?").run(Date.now(), id);
+    const left = leftOutSentence(await open(db, config, workspace, found.spaceName, found.node));
+    const readOnly = line.need === "change" ? " It's read only: another chat's files are that chat's to change." : "";
+    return { event: { kind: "access" as const, ...base, need: "read" as const, state: "auto" as const }, carryOn: `Their own chats' files open without asking. They're in ${where(found.spaceName, found.node)}.${readOnly}${left}` };
+  }
   if (byOwner && grant && ceil && (line.need === "read" || ceil === "change")) {
     db.prepare("UPDATE access_requests SET state = 'auto', answered_at = ? WHERE id = ?").run(Date.now(), id);
     const left = leftOutSentence(await open(db, config, workspace, found.spaceName, found.node));
@@ -317,6 +323,8 @@ function where(spaceName: string, node: DriveNode) {
  * Returns the event to record and what to tell the agent as it carries on.
  */
 export async function answer(db: DatabaseSync, config: CodeConfig, workspace: Workspace, username: string, requestId: string, choice: "file" | "chat" | "always" | "deny", fileId?: string) {
+  /* Owners are kept lower-cased; a capital in someone's name mustn't make their own chat not theirs. */
+  username = username.toLowerCase();
   if (username !== workspace.owner) throw new CodeProblem("Only the person this chat belongs to can answer.", 403);
   const request = db.prepare("SELECT * FROM access_requests WHERE id = ? AND workspace_id = ?").get(requestId, workspace.id) as Request | undefined;
   if (!request) throw new CodeProblem("That request isn't here.", 404);
@@ -363,7 +371,7 @@ export function accessPrompt(db: DatabaseSync, workspace: Workspace): string {
     const code = codeSpaceOf(db, owner);
     const codeName = spacesOf(driveDb(), owner).find((s) => s.id === code)?.name;
     const note = accessNote(spaces, open, notebooks);
-    return codeName ? `${note} Every one of their chats keeps its files in the "${codeName}" space (a folder per project, then one per chat); ask for any of it with kimono-access and it opens without asking them.` : note;
+    return codeName ? `${note} Every one of their chats keeps its files in the "${codeName}" space (a folder per project, then one per chat); ask for any of it with kimono-access and it opens to read without asking them.` : note;
   } catch {
     return "";
   }

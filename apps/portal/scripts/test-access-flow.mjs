@@ -187,7 +187,32 @@ test("a chat opens another of the person's chats' files without asking", async (
   sandboxFiles.clear();
   const asked = await access.onRequest(db, config, ws5, null, { id: '1-00000008', space: 'AI', path: 'Chats/Plan the trip', need: 'change', why: 'To build on the plan.' });
   assert.equal(asked.event.state, 'auto');
+  assert.equal(asked.event.need, 'read', 'another chat\'s files are read only');
   assert.equal(text('.kimono/files/AI/Chats/Plan the trip/itinerary.md'), 'day one');
+  assert.equal(access.alwaysGrants(db, 'mina').some((g) => g.spaceId === codeDb), false, 'nothing is stored as always allowed');
+
+  /* What this chat's agent deletes there doesn't reach Drive: it's put back. */
+  sandboxFiles.delete('.kimono/files/AI/Chats/Plan the trip/itinerary.md');
+  await access.syncOpened(db, config, ws5);
+  assert.equal(drive.childrenOf(ddb, other.id, 'mina').children.find((c) => c.name === 'itinerary.md')?.trashedAt ?? null, null, 'not trashed in Drive');
+  assert.equal(text('.kimono/files/AI/Chats/Plan the trip/itinerary.md'), 'day one');
+
+  /* Shared with someone, their turn doesn't see her other chats. */
+  db.prepare("INSERT INTO turns (id, workspace_id, state, started_at, by_owner) VALUES ('t-guest', ?, 'running', ?, 0)").run(ws5.id, Date.now() + 1000);
+  await access.syncOpened(db, config, ws5);
+  assert.equal(sandboxFiles.has('.kimono/files/AI/Chats/Plan the trip/itinerary.md'), false, 'closed on a guest\'s turn');
+  const guestAsked = await access.onRequest(db, config, ws5, null, { id: '1-0000000a', space: 'AI', path: 'Chats/Plan the trip', need: 'read', why: 'To look.' }, false);
+  assert.equal(guestAsked.event.state, 'pending', 'a guest\'s turn asks the owner');
+});
+
+test('an owner with a capital in their name can answer their own chat', async () => {
+  const ws7 = model.createWorkspace(db, 'mina', { prompt: 'Seventh' });
+  sandboxFiles.clear();
+  const asked = await access.onRequest(db, config, ws7, null, { id: '1-0000000b', space: 'Photos', path: '2026', need: 'read', why: 'To look.' });
+  assert.equal(asked.event.state, 'pending');
+  await access.answer(db, config, ws7, 'Mina', asked.event.id, 'chat');
+  assert.ok(sandboxFiles.has('.kimono/files/Photos/2026/a.txt'));
+  await assert.rejects(access.answer(db, config, ws7, 'Bob', asked.event.id, 'chat'), /belongs to/);
 });
 
 test('a video over the old 50 MB cap streams in whole, with its length said', async () => {

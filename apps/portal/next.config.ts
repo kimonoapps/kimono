@@ -30,6 +30,10 @@ const nextConfig: NextConfig = {
        fetched that way is reused for 30 seconds at most, so a quick press is
        instant and a later one is never more than half a minute stale. */
     staleTimes: { static: 30 },
+    /* With src/proxy.ts in front, Next copies each /api/v1 body and quietly keeps only the
+       first 10 MB of it, so a 20 MB attachment arrived cut off and the route never saw more.
+       Above the largest body a route takes (dictation's 25 MB), the route's own limit decides. */
+    proxyClientMaxBodySize: "26mb",
   },
 };
 

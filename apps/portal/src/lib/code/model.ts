@@ -277,6 +277,17 @@ export function migrate(db: DatabaseSync) {
       COMMIT;
     `);
   }
+  if (version < 16) {
+    /* Reading another of one's own chats needs no grant any more (access.ts): the always-change grants the old
+       way left on the whole chats space go, and so does what an answer stored under a capitalised name. */
+    db.exec(`
+      BEGIN;
+      DELETE FROM grants WHERE workspace_id IS NULL AND space_id IN (SELECT space_id FROM drive_spaces d WHERE d.owner = grants.username);
+      UPDATE grants SET username = lower(username) WHERE username <> lower(username);
+      INSERT OR REPLACE INTO meta (key, value) VALUES ('schema', '16');
+      COMMIT;
+    `);
+  }
   /* A memory written as a page has a title of its own (lib/code/memory.ts). */
   if (!(db.prepare("PRAGMA table_info(memories)").all() as { name: string }[]).some((c) => c.name === "title")) {
     db.exec("ALTER TABLE memories ADD COLUMN title TEXT");

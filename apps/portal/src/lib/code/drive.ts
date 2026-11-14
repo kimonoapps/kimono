@@ -469,7 +469,7 @@ export function driveAttachment(workspace: Workspace, nodeId: string): { path: s
 
 /** The chat's Drive folder, for a big file to be uploaded into before it's attached. Only its owner's. */
 export async function uploadFolder(db: DatabaseSync, workspace: Workspace, username: string): Promise<string> {
-  if (username !== workspace.owner) throw new CodeProblem("Only the person this chat belongs to can attach files over 20 MB.", 403);
+  if (username.toLowerCase() !== workspace.owner) throw new CodeProblem("Only the person this chat belongs to can attach files over 20 MB.", 403);
   const place = await taskFolder(db, workspace);
   if (!place) throw new CodeProblem("Drive isn't switched on.", 409);
   return place.folderId;
