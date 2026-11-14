@@ -9,7 +9,8 @@
     "./accent": "./src/accent.ts",
     "./bloom-identity": "./src/bloom-identity.ts",
     "./bloom-svg": "./src/bloom-svg.ts",
-    "./crest": "./src/crest.ts"
+    "./crest": "./src/crest.ts",
+    "./ink": "./src/ink.ts"
   },
   "scripts": {
     "lint": "tsc --noEmit",

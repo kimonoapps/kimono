@@ -1,29 +1,57 @@
 import { glyphMarkup, type AppIdentity } from "@kimono/ui";
+import { accentRamp } from "@kimono/ui/accent";
+import { createBloomIdentity, petalPath } from "@kimono/ui/bloom-identity";
+import { INK, mixHex } from "@kimono/ui/ink";
 import type { Metadata } from "next";
 
 /*
- * An app's tab icon: its blossom, flat in its own colour, with its glyph cut
- * out in paper. Not the launcher's ink bloom — at 16px that is pale petals
- * and a grey smudge — but the same flower and the same glyph, drawn heavier
- * the smaller it gets. 180px sits on paper with room around it, for the home
- * screen, where iOS rounds the corners itself.
+ * An app's tab icon: its bloom as the launcher draws it — pale petals in the
+ * app's colours, outlined in plum, around a dark heart with the glyph in
+ * paper — without the wash and brush texture, which at 16px is only blur.
+ * Same seed, so the same flower turned the same way. Smaller sizes get a
+ * bigger heart and heavier lines; 180px sits on paper for the home screen,
+ * where iOS rounds the corners itself.
  */
 
 export type FaviconSize = "tiny" | "small" | "large";
 
-const petal = "M50 48 C36 39 31 21 41 9 C45 4 50 2 50 2 C55 4 59 7 62 11 C69 22 63 39 50 48Z";
-const petals = [0, 72, 144, 216, 288].map((turn) => `<path transform="rotate(${turn} 50 50)" d="${petal}"/>`).join("");
-/* The glyph's scale and stroke at each size: bigger and bolder as the icon shrinks. */
-const glyphAt: Record<FaviconSize, [number, number]> = { tiny: [1.18, 7.5], small: [0.95, 7], large: [0.8, 5.5] };
+/* heart radius, outline, glyph scale, glyph stroke */
+const drawn: Record<FaviconSize, [number, number, number, number]> = {
+  tiny: [31, 5, 1.1, 5.5],
+  small: [25, 4.5, .98, 6],
+  large: [22, 3.2, .82, 5],
+};
 
-export function appFaviconSvg(app: Pick<AppIdentity, "accent" | "glyph">, size: FaviconSize): string {
-  const [scale, stroke] = glyphAt[size];
+const HEART = "#3a2128";
+const PAPER = "#fffaf2";
+
+export function appFaviconSvg(app: Pick<AppIdentity, "id" | "accent" | "glyph">, size: FaviconSize): string {
+  const [heart, outline, scale, stroke] = drawn[size];
+  const bloom = createBloomIdentity(app);
+  const ramp = accentRamp(app.accent);
+  /* The wash, flattened: tips near the tint, alternate petals a shade deeper. */
+  const fills = [mixHex(ramp.tint, ramp.soft, .25), mixHex(ramp.tint, ramp.soft, .55)];
+  /* Petals reach the edge of the square; the outline stays inside it. */
+  const reach = (100 - (size === "tiny" ? 2 : 1) * outline) / 94;
+  const petal = (index: number, paint: string) => {
+    const { rotation } = bloom.petals[index];
+    return `<path transform="rotate(${rotation.toFixed(2)} 50 50) translate(50 50) scale(${reach.toFixed(3)}) translate(-50 -50)" d="${petalPath}" ${paint}/>`;
+  };
+  const each = [0, 1, 2, 3, 4];
+  /* At 16px a line between every petal is a grid of grey: there the plum only
+     traces the flower's silhouette, and the petals are one colour, a shade
+     deeper so the app's colour still reads. */
+  const petals = size === "tiny"
+    ? each.map((i) => petal(i, `fill="${INK}" stroke="${INK}" stroke-width="${outline * 2}" stroke-linejoin="round"`)).join("")
+      + each.map((i) => petal(i, `fill="${fills[1]}"`)).join("")
+    : each.map((i) => petal(i, `fill="${fills[i % 2]}" stroke="${INK}" stroke-width="${outline}" stroke-linejoin="round" paint-order="stroke"`)).join("");
+  const ring = size === "tiny" ? "" : ` stroke="${INK}" stroke-width="${outline * .6}"`;
+  const flower = `<g transform="rotate(${bloom.rotation.toFixed(2)} 50 50)">${petals}</g><circle cx="50" cy="50" r="${heart}" fill="${HEART}"${ring}/>`;
   /* The glyphs set their own 4.5 stroke for the launcher; here the size decides. */
   const glyph = (glyphMarkup[app.glyph ?? "bloom"] ?? glyphMarkup.bloom).replaceAll(' stroke-width="4.5"', "");
-  const flower = `<g transform="translate(50 53) scale(1.02) translate(-50 -50)" fill="${app.accent}">${petals}<circle cx="50" cy="50" r="24"/></g>`;
-  const mark = `<g transform="translate(0 3)"><g fill="none" stroke="#fffaf2" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round" transform="translate(50 50) scale(${scale}) translate(-50 -50)">${glyph}</g></g>`;
+  const mark = `<g fill="none" stroke="${PAPER}" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round" transform="translate(50 50) scale(${scale}) translate(-50 -50)">${glyph}</g>`;
   const body = size === "large"
-    ? `<rect width="100" height="100" fill="#f6f0e6"/><g transform="translate(50 50) scale(.78) translate(-50 -50)">${flower}${mark}</g>`
+    ? `<rect width="100" height="100" fill="#f7f1e8"/><g transform="translate(50 50) scale(.8) translate(-50 -50)">${flower}${mark}</g>`
     : flower + mark;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">${body}</svg>`;
 }
