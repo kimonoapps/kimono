@@ -429,7 +429,7 @@
 .kb .kb-set-row{display:grid;grid-template-columns:64px 1fr;align-items:center;gap:10px}
 .kb .kb-set-label{font-size:13px;font-weight:600;opacity:.65}
 .kb .kb-set-choices{display:flex;gap:3px;padding:3px;border-radius:14px;background:color-mix(in srgb,var(--paper-ink) 7%,transparent)}
-.kb .kb-set-choices button{flex:1;height:34px;border-radius:11px;font-size:13px;font-weight:600;color:inherit;opacity:.75;transition:background .2s,opacity .2s}
+.kb .kb-set-choices button{flex:1 1 0;min-width:0;display:grid;place-items:center;text-align:center;padding:0 8px;white-space:nowrap;height:34px;border-radius:11px;font-size:13px;font-weight:600;color:inherit;opacity:.75;transition:background .2s,opacity .2s}
 .kb .kb-set-choices button:hover{opacity:1}
 .kb .kb-set-choices button[aria-checked="true"]{background:var(--paper);opacity:1;box-shadow:0 1px 3px rgb(0 0 0 / .18)}
 .kb .kb-set-papers{display:flex;gap:10px}

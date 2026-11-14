@@ -177,6 +177,8 @@ export function Reader({ bookKey, title, author, file, startAt, onClose, onProgr
             html: { background: "transparent" },
             body: { "font-family": "\"Shippori Mincho\", \"Iowan Old Style\", Georgia, serif", "line-height": "1.7", background: "transparent", hyphens: "auto", "text-align": "justify" },
             [`html.${name} body`]: { color: `${p.ink} !important` },
+            /* Books colour their own headings and title pages (often plain black), which vanished on dusk and night. */
+            [`html.${name} body *`]: { color: "inherit !important", "-webkit-text-fill-color": "currentColor" },
             "h1, h2, h3": { "font-family": "\"Shippori Mincho\", Georgia, serif", "font-weight": "700", "line-height": "1.25", "text-align": "left" },
             p: { margin: "0 0 .9em" },
             a: { color: "inherit" },
