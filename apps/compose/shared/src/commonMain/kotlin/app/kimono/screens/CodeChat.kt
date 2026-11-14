@@ -888,8 +888,8 @@ private fun AskBubble(code: Code, platform: Platform, people: Map<String, app.ki
     editing?.let { draft ->
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
             Column(
-                Modifier.widthIn(max = 340.dp).fillMaxWidth().background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(24.dp, 24.dp, 8.dp, 24.dp))
-                    .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(24.dp, 24.dp, 8.dp, 24.dp)).padding(horizontal = 16.dp, vertical = 12.dp),
+                Modifier.widthIn(max = 340.dp).fillMaxWidth().background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp))
+                    .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp)).padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 val focus = remember { FocusRequester() }
@@ -923,17 +923,17 @@ private fun AskBubble(code: Code, platform: Platform, people: Map<String, app.ki
             app.kimono.ui.Portrait(person?.picture, person?.name, other, 22.dp)
         }
         Column(
-            Modifier.widthIn(max = 320.dp).alpha(if (ask.dropped) .5f else if (ask.queued) .72f else 1f).clip(RoundedCornerShape(24.dp, 24.dp, 8.dp, 24.dp))
+            Modifier.widthIn(max = 288.dp).alpha(if (ask.dropped) .5f else if (ask.queued) .72f else 1f).clip(RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp))
                 .combinedClickable(onClick = {}, onLongClickLabel = "Copy or edit", onLongClick = { haptics.performHapticFeedback(HapticFeedbackType.LongPress); held = true })
-                .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(24.dp, 24.dp, 8.dp, 24.dp)).padding(horizontal = 16.dp, vertical = 11.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+                .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp)).padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             if (ask.text.isNotBlank()) {
                 val (quoted, words) = splitQuote(ask.text)
                 val ink = MaterialTheme.colorScheme.onSecondaryContainer
                 if (quoted != null) Text(quoted, style = MaterialTheme.typography.bodyMedium, color = ink.copy(alpha = .75f), maxLines = 4, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.drawBehind { drawRect(ink.copy(alpha = .4f), size = androidx.compose.ui.geometry.Size(3.dp.toPx(), size.height)) }.padding(start = 10.dp))
-                if (words.isNotBlank()) Text(words, style = MaterialTheme.typography.bodyLarge, color = ink)
+                if (words.isNotBlank()) Text(words, style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 22.sp), color = ink)
             }
             val media = ask.attachments.filter { it.isMedia }
             val others = ask.attachments.filterNot { it.isMedia }
