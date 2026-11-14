@@ -41,6 +41,20 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="kimono" android:host="auth" />
             </intent-filter>
+            <!-- Kimono's own addresses open here when the app is installed (vouched for by the portal's assetlinks.json). -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="www.kimonolabs.dev" />
+                <data android:path="/code" />
+                <data android:path="/notes" />
+                <data android:path="/drive" />
+                <data android:path="/books" />
+                <data android:pathPrefix="/ai/c/" />
+                <data android:pathPrefix="/ai/a/" />
+            </intent-filter>
             <!-- Kimono in the share sheet: photos, videos and files from any app. -->
             <intent-filter android:label="Kimono">
                 <action android:name="android.intent.action.SEND" />

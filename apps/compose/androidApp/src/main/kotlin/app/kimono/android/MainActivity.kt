@@ -93,6 +93,12 @@ class MainActivity : ComponentActivity() {
             platform.signInReturned(data)
             return
         }
+        /* A Kimono address opened elsewhere (App Links): the screen the website would show. */
+        if (intent.action == Intent.ACTION_VIEW && (data?.scheme == "https" || data?.scheme == "http")) {
+            app.kimono.openLink(data.toString())
+            intent.data = null
+            return
+        }
         if (intent.action == Intent.ACTION_SEND) {
             @Suppress("DEPRECATION")
             val uri = (intent.getParcelableExtra(Intent.EXTRA_STREAM) as? Uri)?.takeIf { fromElsewhere(it) } ?: return

@@ -221,7 +221,7 @@ private fun SignedIn(session: Session, platform: Platform, profile: AccountProfi
     LaunchedEffect(driveOn) {
         val on = driveOn ?: return@LaunchedEffect
         platform.driveAvailable(on)
-        if (!on && route != null && route !in setOf("home", "you", "details", "devices", "password", "code", "code/{id}", "code/{id}/app", "ai/new", "ai/new/{in}", "ai/connections", "ai/connections/{app}", "ai/memory", "ai/archived", "ai/a/{token}", "manage", "manage/{id}", "friends", "people/{username}", "vpn", "vpn/people", "vpn/connect", "app/{id}", "notes", "notes/{notebook}", "note/{id}", "books", "books/shelf", "books/search")) goTab("home")
+        if (!on && route != null && route !in setOf("home", "you", "details", "devices", "password", "code", "code/{id}", "code/{id}/app", "ai/new", "ai/new/{in}", "ai/connections", "ai/connections/{app}", "ai/memory", "ai/archived", "ai/a/{token}", "ai/c/{token}", "manage", "manage/{id}", "friends", "people/{username}", "vpn", "vpn/people", "vpn/connect", "app/{id}", "notes", "notes/{notebook}", "note/{id}", "books", "books/shelf", "books/search")) goTab("home")
     }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
@@ -310,6 +310,20 @@ private fun SignedIn(session: Session, platform: Platform, profile: AccountProfi
                 val token = backStack.arguments?.read { getStringOrNull("token") } ?: ""
                 AppAccentTheme(model.drive.knownApps()?.firstOrNull { it.id == app.kimono.data.Code.APP_ID }?.accent) {
                     app.kimono.screens.SharedArtifactScreen(code, platform, token) { nav.popBackStack() }
+                }
+            }
+            /* A chat someone shared, by its link: it joins your chats, then opens. */
+            composable("ai/c/{token}") { backStack ->
+                val token = backStack.arguments?.read { getStringOrNull("token") } ?: ""
+                var failed by remember { mutableStateOf<String?>(null) }
+                LaunchedEffect(token) {
+                    try {
+                        val chat = code.join(token)
+                        nav.navigate("code/${chat.id}") { popUpTo("ai/c/{token}") { inclusive = true } }
+                    } catch (p: KimonoProblem) { failed = p.message }
+                }
+                AppAccentTheme(aiAccent()) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { if (failed == null) InkLoader() else Problem(failed) }
                 }
             }
             composable("code/{id}") { backStack ->

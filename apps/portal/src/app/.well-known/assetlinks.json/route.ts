@@ -1,7 +1,8 @@
 /**
  * Vouches for the Kimono app on Android, so the phone's password manager
  * treats a password saved for this Kimono's website and one saved in the
- * app as the same. Every Kimono serves it, whatever its address.
+ * app as the same, and the addresses the app has screens for open in it
+ * (App Links). Every Kimono serves it, whatever its address.
  */
 const kimonoAndroid = {
   package: "app.kimono.compose",
@@ -11,7 +12,7 @@ const kimonoAndroid = {
 
 export function GET() {
   return Response.json([{
-    relation: ["delegate_permission/common.get_login_creds"],
+    relation: ["delegate_permission/common.get_login_creds", "delegate_permission/common.handle_all_urls"],
     target: { namespace: "android_app", package_name: kimonoAndroid.package, sha256_cert_fingerprints: [kimonoAndroid.certificate] },
   }], { headers: { "Cache-Control": "public, max-age=3600" } });
 }

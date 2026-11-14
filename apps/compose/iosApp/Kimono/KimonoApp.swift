@@ -12,6 +12,8 @@ struct KimonoApp: App {
     var body: some Scene {
         WindowGroup {
             ComposeView().ignoresSafeArea()
+                /* A Kimono address opened elsewhere (Universal Links): the screen the website would show. */
+                .onOpenURL { url in _ = LinksKt.openLink(link: url.absoluteString) }
         }
         .onChange(of: phase) { _, now in
             if now == .active { Host.shared.cameForward() }
