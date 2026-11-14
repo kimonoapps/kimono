@@ -34,7 +34,7 @@ export function HomePage({ home, filter, setFilter, chipsAway, more, onMore, fri
           </picture>
           <div className="kw-hero-body">
             <TitleMark name={featured.name} logo={featured.logo} />
-            {featured.fresh ? <div className="kw-rank"><span className="kw-fresh-mark">New</span>{featured.fresh.label} out {featured.fresh.when.toLowerCase()}</div>
+            {featured.fresh ? <div className="kw-rank"><span className="kw-fresh-mark">New</span>{featured.fresh.label} out {/^(Today|Yesterday)$/.test(featured.fresh.when) ? featured.fresh.when.toLowerCase() : `on ${featured.fresh.when}`}</div>
               : rank >= 0 ? <div className="kw-rank"><Top10 />#{rank + 1}{filter ? ` in ${filter === "Film" ? "Films" : filter}` : ""} today</div> : null}
             <p className="kw-tagline">{featured.overview}</p>
             <div className="kw-btns">

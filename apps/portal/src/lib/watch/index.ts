@@ -376,37 +376,50 @@ export function namer(db: DatabaseSync, title: Title, prefs: ReturnType<typeof p
   return { layout, label, named };
 }
 
-/** An episode out in the last day or so, for Home's Just out row; `genres` from the show's details, which list stubs lack. */
+/** An episode out in the last few days, for Home's Just out row; `genres` from the show's details, which list stubs lack. */
 type Fresh = { titleId: string; season: number; episode: number; airDate: string; still: string | null; name: string; genres: string[] };
 
-const freshDay = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
-
-/** A show's latest aired episode, if it came out today or yesterday (TMDB's days). Each show's answer is kept two hours. */
-async function lastAired(cfg: WatchConfig, t: Pick<Title, "id" | "tmdbId">): Promise<Fresh | null> {
-  const db = watchDb();
-  const key = `last-aired:${t.id}`;
-  const known = cached<{ fresh: Fresh | null }>(db, key) ?? await shared(airLooks, key, async () => {
-    const details = await tmdb(cfg.tmdbToken, `/tv/${t.tmdbId}`).catch(() => null);
-    if (!details) return { fresh: null };
-    const last = details.last_episode_to_air;
-    const fresh: Fresh | null = last?.air_date && last.season_number ? {
-      titleId: t.id, season: Number(last.season_number), episode: Number(last.episode_number), airDate: String(last.air_date), still: last.still_path ?? null, name: String(last.name ?? ""),
-      genres: ((details.genres ?? []) as { name: string }[]).map((g) => String(g.name)),
-    } : null;
-    keep(db, key, { fresh }, hours(2));
-    return { fresh };
-  });
-  return known.fresh && known.fresh.airDate >= freshDay(-1) ? known.fresh : null;
-}
-const airLooks = new Map<string, Promise<{ fresh: Fresh | null }>>();
+/** A date on the server's own clock (YYYY-MM-DD), `offset` days from today: UTC would empty the row every evening in the Americas. */
+const freshDay = (offset: number) => new Date(Date.now() + offset * 86_400_000).toLocaleDateString("en-CA");
+/** How far back Just out reaches: today and the two days before. */
+const freshSince = () => freshDay(-2);
+/** "Today", "Yesterday" or the weekday an episode came out. */
+const freshWhen = (airDate: string) => airDate >= freshDay(0) ? "Today" : airDate >= freshDay(-1) ? "Yesterday"
+  : new Date(`${airDate}T12:00:00`).toLocaleDateString("en-US", { weekday: "long" });
 
 /**
- * The most popular anime and series with an episode out today or yesterday,
+ * A show's newest episode out in the last few days. TMDB moves an episode
+ * from "next" to "last" a while after it airs, so a next episode whose date
+ * has come counts as out. Each show's answer is kept two hours.
+ */
+async function lastAired(cfg: WatchConfig, t: Pick<Title, "id" | "tmdbId">): Promise<Fresh | null> {
+  const db = watchDb();
+  const key = `aired:${t.id}`;
+  const known = cached<{ last: Fresh | null; next: Fresh | null }>(db, key) ?? await shared(airLooks, key, async () => {
+    const details = await tmdb(cfg.tmdbToken, `/tv/${t.tmdbId}`).catch(() => null);
+    if (!details) return { last: null, next: null };
+    const genres = ((details.genres ?? []) as { name: string }[]).map((g) => String(g.name));
+    const of = (e: Record<string, unknown> | null | undefined): Fresh | null => e?.air_date && e.season_number ? {
+      titleId: t.id, season: Number(e.season_number), episode: Number(e.episode_number), airDate: String(e.air_date), still: (e.still_path as string | null) ?? null, name: String(e.name ?? ""), genres,
+    } : null;
+    const aired = { last: of(details.last_episode_to_air), next: of(details.next_episode_to_air) };
+    keep(db, key, aired, hours(2));
+    return aired;
+  });
+  const out = known.next && known.next.airDate <= freshDay(0) ? known.next : known.last;
+  return out && out.airDate >= freshSince() ? out : null;
+}
+/** Shows that lead Just out and the hero whenever they have a new episode, whoever is watching: JoJo's Bizarre Adventure (Steel Ball Run). */
+const alwaysFirst = ["tv-45790"];
+const airLooks = new Map<string, Promise<{ last: Fresh | null; next: Fresh | null }>>();
+
+/**
+ * The most popular anime and series with an episode out in the last few days,
  * most popular first: discover by air date, then each show's last aired episode.
  */
 async function freshEpisodes(cfg: WatchConfig): Promise<{ titles: Title[]; episodes: Fresh[] }> {
-  const [today, yesterday] = [freshDay(0), freshDay(-1)];
-  const window = { "air_date.gte": yesterday, "air_date.lte": today, sort_by: "popularity.desc" };
+  const today = freshDay(0);
+  const window = { "air_date.gte": freshSince(), "air_date.lte": today, sort_by: "popularity.desc" };
   const [anime, series] = await Promise.all([
     tmdbList(cfg, `discover:fresh-anime:${today}`, "/discover/tv", { ...window, with_genres: "16", with_origin_country: "JP", "vote_count.gte": "20" }, hours(3)),
     tmdbList(cfg, `discover:fresh-series:${today}`, "/discover/tv", { ...window, "vote_count.gte": "300", without_genres: "10763,10764,10766,10767,16" }, hours(3)),
@@ -489,10 +502,11 @@ export async function home(cfg: WatchConfig, username: string, origin: string, s
   /*
    * Just out, as a guess at what this person wants: shows they're watching
    * (looked up even when they aren't popular), then My list, then how well the
-   * show fits what they watch (anime, series or films, and genres), with
-   * popularity breaking ties. Shows they rated down are left out.
+   * show fits what they watch (anime, series or films, and genres), newer
+   * episodes and popularity breaking ties. JoJo is always first (alwaysFirst). Shows they rated down are left out.
    */
-  const followed = [...recentShows, ...mine].filter((t, i, all) => t.kind === "series" && t.id.startsWith("tv-") && all.findIndex((x) => x.id === t.id) === i && !fresh.titles.some((x) => x.id === t.id)).slice(0, 15);
+  const pinned = (await Promise.all(alwaysFirst.map((id) => ensureTitle(cfg, id).catch(() => null)))).filter((t): t is Title => Boolean(t));
+  const followed = [...pinned, ...recentShows, ...mine].filter((t, i, all) => t.kind === "series" && t.id.startsWith("tv-") && all.findIndex((x) => x.id === t.id) === i && !fresh.titles.some((x) => x.id === t.id)).slice(0, 16);
   const followedFresh = (await Promise.all(followed.map((t) => lastAired(cfg, t).catch(() => null)))).filter((f): f is Fresh => Boolean(f));
   const freshTitles = [...fresh.titles, ...followed];
   const taste = tasteOf([...recentTitlesList, ...mine]);
@@ -504,12 +518,12 @@ export async function home(cfg: WatchConfig, username: string, origin: string, s
   const fit = (t: Title, f: Fresh, i: number) => {
     const kind = t.shelf === "Anime" ? "anime" : "series";
     const genres = f.genres.filter((g) => g !== "Animation").reduce((sum, g) => sum + (taste.genres.get(g) ?? 0), 0) / genreTop;
-    return (watching.has(t.id) ? 100 : 0) + (listed.has(t.id) ? 40 : 0) + 6 * ((taste.kinds.get(kind) ?? 0) / kindsTotal) + 4 * Math.min(1, genres / 2) + 3 * (1 - i / candidates.length);
+    return (alwaysFirst.includes(t.id) ? 10_000 : 0) + (watching.has(t.id) ? 100 : 0) + (listed.has(t.id) ? 40 : 0) + 6 * ((taste.kinds.get(kind) ?? 0) / kindsTotal) + 4 * Math.min(1, genres / 2) + 3 * (1 - i / candidates.length) + (f.airDate >= freshDay(0) ? 3 : f.airDate >= freshDay(-1) ? 1.5 : 0);
   };
   const freshCards = candidates.flatMap((f, i) => {
     const t = freshTitles.find((x) => x.id === f.titleId);
     if (!t || !ok(t) || ratingOf(db, username, t.id) === "down") return [];
-    const when = f.airDate >= freshDay(0) ? "Today" : "Yesterday";
+    const when = freshWhen(f.airDate);
     const card = { ...cardOf(t, origin, { badge: "New episode" }), season: f.season, episode: f.episode, label: freshLabel(namer(db, t, prefs, username), f), when, still: imageUrl(origin, f.still, "w780") };
     return [{ card, score: fit(t, f, i) }];
   }).sort((a, b) => b.score - a.score).map((c) => c.card).slice(0, 16);
