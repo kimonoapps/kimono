@@ -61,7 +61,7 @@ fun InkMenu(
  * inside the slip, so nothing of it is cut off at the edge.
  */
 @Composable
-private fun Modifier.inkPool(seed: String, tint: Color = Kata.suo, ground: Color = MaterialTheme.colorScheme.surfaceContainerLow): Modifier {
+private fun Modifier.inkPool(seed: String, tint: Color = LocalInkTint.current ?: Kata.suo, ground: Color = MaterialTheme.colorScheme.surfaceContainerLow): Modifier {
     val pool = remember(seed) { InkRandom(inkSeed("pool:$seed")).let { inkBlot(it, 50f, 50f, 46f, lobes = 10, low = .84f, high = 1.06f) } }
     return drawBehind {
         val r = 30.dp.toPx()
@@ -85,7 +85,7 @@ fun InkMenuItem(label: String, onClick: () -> Unit, icon: String? = null, danger
         contentPadding = PaddingValues(horizontal = 16.dp),
         leadingIcon = icon?.let {
             {
-                InkBlot("menu:$label", tint = if (danger) MaterialTheme.colorScheme.error else Kata.suo, size = 28.dp) {
+                InkBlot("menu:$label", tint = if (danger) MaterialTheme.colorScheme.error else LocalInkTint.current ?: Kata.suo, size = 28.dp) {
                     Icon(inkIcon(it), null, tint = if (danger) Kata.suoPad else Kata.plum, modifier = Modifier.size(15.dp))
                 }
             }

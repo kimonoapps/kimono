@@ -54,7 +54,7 @@ fun InkDialog(
     title: String,
     onDismiss: () -> Unit,
     icon: String? = null,
-    tint: Color = Kata.suo,
+    tint: Color = LocalInkTint.current ?: Kata.suo,
     actions: @Composable RowScope.() -> Unit = {},
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -76,7 +76,7 @@ fun InkDialog(
 
 /** A dialog's or a sheet's head: its mark in its own puddle, and its name in Mincho. */
 @Composable
-fun InkTitle(title: String, icon: String? = null, tint: Color = Kata.suo, modifier: Modifier = Modifier, maxLines: Int = 2) {
+fun InkTitle(title: String, icon: String? = null, tint: Color = LocalInkTint.current ?: Kata.suo, modifier: Modifier = Modifier, maxLines: Int = 2) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         if (icon != null) InkBlot("head:$title", tint = tint, size = 44.dp) {
             Icon(inkIcon(icon), null, tint = Kata.plum, modifier = Modifier.size(22.dp))
@@ -90,7 +90,7 @@ fun InkTitle(title: String, icon: String? = null, tint: Color = Kata.suo, modifi
  * colour pooling at its rim, the paper at its heart.
  */
 @Composable
-fun Modifier.inkBleed(seed: String, tint: Color = Kata.suo, ground: Color = MaterialTheme.colorScheme.surfaceContainerLow): Modifier {
+fun Modifier.inkBleed(seed: String, tint: Color = LocalInkTint.current ?: Kata.suo, ground: Color = MaterialTheme.colorScheme.surfaceContainerLow): Modifier {
     val bleed = remember(seed) { InkRandom(inkSeed("bleed:$seed")).let { inkBlot(it, 4f, 2f, 30f, lobes = 11, low = .82f, high = 1.08f) } }
     return drawBehind {
         val s = min(size.width, 360.dp.toPx()) / 100f * .9f
@@ -122,7 +122,7 @@ fun InkConfirm(
 ) {
     InkDialog(
         title = title, onDismiss = onDismiss, icon = icon,
-        tint = if (danger) MaterialTheme.colorScheme.error else Kata.suo,
+        tint = if (danger) MaterialTheme.colorScheme.error else LocalInkTint.current ?: Kata.suo,
         actions = {
             Seal(keep, compact = true, tone = SealTone.Quiet, onClick = onDismiss)
             Seal(action, compact = true, tone = if (danger) SealTone.Danger else SealTone.Primary, onClick = onConfirm)

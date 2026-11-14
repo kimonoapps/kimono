@@ -662,7 +662,8 @@ internal fun Picker(label: String, value: String, options: List<Option>, action:
                         Text(option.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         option.detail?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     }
-                }, onClick = { open = false; choose(option.value) })
+                }, onClick = { open = false; choose(option.value) },
+                    trailingIcon = if (option.label == value) ({ Icon(app.kimono.ui.inkIcon("check"), null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp)) }) else null)
             }
             if (action != null) {
                 if (options.isNotEmpty()) HorizontalDivider()

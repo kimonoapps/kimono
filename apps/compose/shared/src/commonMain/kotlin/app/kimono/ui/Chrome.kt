@@ -80,7 +80,7 @@ fun KimonoGroup(items: List<GroupItem>, modifier: Modifier = Modifier) {
                 leadingContent = item.icon?.let { name ->
                     {
                         /* Each row's icon sits in its own watercolour puddle. */
-                        InkBlot(item.label, tint = if (item.danger) MaterialTheme.colorScheme.error else Kata.suo) {
+                        InkBlot(item.label, tint = if (item.danger) MaterialTheme.colorScheme.error else LocalInkTint.current ?: Kata.suo) {
                             Icon(kimonoIcon(name), null, tint = if (item.danger) Color(0xFF93000A) else Kata.plum, modifier = Modifier.size(20.dp))
                         }
                     }

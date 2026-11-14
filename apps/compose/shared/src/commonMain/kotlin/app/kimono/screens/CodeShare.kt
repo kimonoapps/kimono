@@ -48,6 +48,8 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.kimono.data.ArtifactSharing
+import app.kimono.data.ChatInvite
+import app.kimono.data.ChatLink
 import app.kimono.data.ChatSharing
 import app.kimono.data.Code
 import app.kimono.data.CodeWorkspace
@@ -174,23 +176,29 @@ internal fun ChatShareSheet(code: Code, platform: Platform, w: CodeWorkspace, on
     var problem by remember { mutableStateOf<String?>(null) }
     val (copied, copy) = rememberCopied()
     LaunchedEffect(w.id) { try { sharing = code.chatSharing(w.id) } catch (p: KimonoProblem) { problem = p.message } }
-    fun change(work: suspend () -> ChatSharing) { problem = null; scope.launch { try { sharing = work() } catch (p: KimonoProblem) { problem = p.message } } }
+    /* What was chosen shows at once; the server's answer follows (it can take a while), and a refusal puts it back. */
+    fun change(guess: (ChatSharing) -> ChatSharing, work: suspend () -> ChatSharing) {
+        problem = null
+        val before = sharing
+        if (before != null) sharing = guess(before)
+        scope.launch { try { sharing = work() } catch (p: KimonoProblem) { sharing = before; problem = p.message } }
+    }
     val owner = w.owner.ifEmpty { code.me ?: "" }
     ShareSheet(w.title, onDismiss) {
         val s = sharing
         if (s == null) { if (problem == null) Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { InkLoader() } }
         else {
-            PeopleFinder(people, s.people.map { it.username.lowercase() }.toSet() + owner.lowercase()) { p -> change { code.shareChat(w.id, p.username, "read") } }
+            PeopleFinder(people, s.people.map { it.username.lowercase() }.toSet() + owner.lowercase()) { p -> change({ it.copy(people = it.people + ChatInvite(p.username, "read")) }) { code.shareChat(w.id, p.username, "read") } }
             Column {
                 PersonRow(people[owner.lowercase()], owner, "Owner")
                 s.people.forEach { invite ->
                     PersonRow(people[invite.username.lowercase()], invite.username, "@${invite.username}") {
                         CanChip(canWords[invite.access] ?: "Can view") { close ->
                             canWords.forEach { (access, word) ->
-                                InkMenuItem(word, chosen = access == invite.access, onClick = { close(); if (access != invite.access) change { code.shareChat(w.id, invite.username, access) } })
+                                InkMenuItem(word, chosen = access == invite.access, onClick = { close(); if (access != invite.access) change({ it.copy(people = it.people.map { i -> if (i.username == invite.username) i.copy(access = access) else i }) }) { code.shareChat(w.id, invite.username, access) } })
                             }
                             HorizontalDivider()
-                            InkMenuItem("Remove", danger = true, onClick = { close(); change { code.shareChat(w.id, invite.username, null) } })
+                            InkMenuItem("Remove", danger = true, onClick = { close(); change({ it.copy(people = it.people.filter { i -> i.username != invite.username }) }) { code.shareChat(w.id, invite.username, null) } })
                         }
                     }
                 }
@@ -202,13 +210,13 @@ internal fun ChatShareSheet(code: Code, platform: Platform, w: CodeWorkspace, on
                 Box(Modifier.weight(1f)) {
                     val words = if (s.publicLinks) generalWords else signedInWords
                     Picker("Who can open it", words.getValue(general), words.map { (v, word) -> Option(v, word) }) { next ->
-                        if (next != general) change { code.setChatLink(w.id, next.takeIf { it != "off" }) }
+                        if (next != general) change({ it.copy(link = next.takeIf { a -> a != "off" }?.let { a -> ChatLink(it.link?.token.orEmpty(), a) }) }) { code.setChatLink(w.id, next.takeIf { it != "off" }) }
                     }
                 }
             }
             if (s.people.any { it.access == "edit" } || s.link?.access == "edit") Text("Someone who can write uses your files and apps.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             /* With the link off, the address still opens it for the people invited. */
-            val url = s.link?.let { code.chatLink(it.token) } ?: "${code.server}/code#w=${w.id}"
+            val url = s.link?.token?.takeIf { it.isNotEmpty() }?.let { code.chatLink(it) } ?: "${code.server}/code#w=${w.id}"
             Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Seal(if (copied) "Copied" else "Copy link", compact = true, tone = SealTone.Quiet, onClick = { copy(url) })
                 Seal("Share", compact = true, onClick = { platform.share(url) })
@@ -227,7 +235,12 @@ internal fun ArtifactShareSheet(code: Code, platform: Platform, workspaceId: Str
     var problem by remember { mutableStateOf<String?>(null) }
     val (copied, copy) = rememberCopied()
     LaunchedEffect(workspaceId, name) { try { sharing = code.artifactSharing(workspaceId, name) } catch (p: KimonoProblem) { problem = p.message } }
-    suspend fun change(work: suspend () -> ArtifactSharing): ArtifactSharing? { problem = null; return try { work().also { sharing = it } } catch (p: KimonoProblem) { problem = p.message; null } }
+    suspend fun change(guess: ((ArtifactSharing) -> ArtifactSharing)? = null, work: suspend () -> ArtifactSharing): ArtifactSharing? {
+        problem = null
+        val before = sharing
+        if (before != null && guess != null) sharing = guess(before)
+        return try { work().also { sharing = it } } catch (p: KimonoProblem) { sharing = before; problem = p.message; null }
+    }
     /* The link exists once it's first shared; copying or sharing before that makes it, for the people it's shared with. */
     fun withLink(then: (String) -> Unit) = scope.launch {
         val token = sharing?.token ?: change { code.setArtifactPublic(workspaceId, name, sharing?.public ?: false) }?.token
@@ -245,7 +258,7 @@ internal fun ArtifactShareSheet(code: Code, platform: Platform, workspaceId: Str
                 everyone.forEach { p ->
                     val shared = p.username.lowercase() in on
                     PersonRow(p, p.username, "@${p.username}") {
-                        Switch(shared, { next -> scope.launch { change { code.shareArtifact(workspaceId, name, p.username, next) } } })
+                        Switch(shared, { next -> scope.launch { change({ it.copy(people = if (next) it.people + p.username else it.people.filter { u -> !u.equals(p.username, ignoreCase = true) }) }) { code.shareArtifact(workspaceId, name, p.username, next) } } })
                     }
                 }
             }
@@ -257,7 +270,7 @@ internal fun ArtifactShareSheet(code: Code, platform: Platform, workspaceId: Str
                     Text("Anyone with the link", style = MaterialTheme.typography.bodyLarge)
                     Text(if (s.public) "Can view, without signing in" else "Only the people it’s shared with", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Switch(s.public, { next -> scope.launch { change { code.setArtifactPublic(workspaceId, name, next) } } })
+                Switch(s.public, { next -> scope.launch { change({ it.copy(public = next) }) { code.setArtifactPublic(workspaceId, name, next) } } })
             }
             Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Seal(if (copied) "Copied" else "Copy link", compact = true, tone = SealTone.Quiet, onClick = { withLink(copy) })

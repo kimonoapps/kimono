@@ -38,7 +38,7 @@ fun InkSheet(
     onDismissRequest: () -> Unit,
     sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
     seed: String = "sheet",
-    tint: Color = Kata.suo,
+    tint: Color = LocalInkTint.current ?: Kata.suo,
     wash: Boolean = true,
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainerLow,
     content: @Composable ColumnScope.() -> Unit,
