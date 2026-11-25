@@ -11,7 +11,11 @@ import io.ktor.http.content.ByteArrayContent
 import io.ktor.http.contentType
 import io.ktor.http.encodeURLParameter
 import io.ktor.http.isSuccess
+import io.ktor.utils.io.readAvailable
 import io.ktor.utils.io.readUTF8Line
+import kotlinx.io.buffered
+import kotlinx.io.files.Path
+import kotlinx.io.files.SystemFileSystem
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.StateFlow
@@ -814,6 +818,40 @@ class Code(private val session: Session, private val platform: Platform? = null)
         else "${ws(id)}/attachments/${a.path.removePrefix("/attachments/").encodeURLParameter()}?type=${a.type.encodeURLParameter()}"
 
     suspend fun attachment(id: String, a: CodeAttachment): ByteArray = bytes(attachmentPath(id, a))
+
+    /**
+     * Downloads an attachment into [directory] as it streams, never whole in memory (a video can
+     * be gigabytes), reporting bytes as they arrive; a copy already there at its size is used as it is.
+     */
+    suspend fun downloadAttachment(id: String, a: CodeAttachment, directory: String, progress: (Long) -> Unit = {}): String {
+        val key = (a.node ?: a.path).replace(Regex("[^A-Za-z0-9._-]"), "_").takeLast(80)
+        val folder = Path(directory, "ai", id, key)
+        val name = a.name.replace(Regex("[/\\\\:]"), "_").ifBlank { "file" }
+        val target = Path(folder, name)
+        val fs = SystemFileSystem
+        fs.metadataOrNull(target)?.let { if (a.size > 0 && it.size == a.size) return target.toString() }
+        fs.createDirectories(folder)
+        val partial = Path(folder, ".$name.part")
+        session.respond(attachmentPath(id, a), long = true) { response ->
+            if (!response.status.isSuccess()) throw session.problemOf(response, "That file couldn't be downloaded.")
+            val channel = response.bodyAsChannel()
+            val buffer = ByteArray(64 * 1024)
+            var received = 0L
+            progress(0)
+            fs.sink(partial).buffered().use { sink ->
+                while (true) {
+                    val read = channel.readAvailable(buffer)
+                    if (read < 0) break
+                    if (read == 0) { if (channel.isClosedForRead) break else continue }
+                    sink.write(buffer, 0, read)
+                    received += read
+                    progress(received)
+                }
+            }
+        }
+        fs.atomicMove(partial, target)
+        return target.toString()
+    }
 
     /** An attachment to play as it streams (a video), instead of fetched whole. */
     fun attachmentStream(id: String, a: CodeAttachment): Stream = session.stream(attachmentPath(id, a))

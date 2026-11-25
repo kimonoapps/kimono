@@ -43,6 +43,11 @@ interface Platform {
     fun cacheDir(): String
     /** Shows a downloaded file in the system's own viewer (Quick Look, or the app that opens it). */
     fun openFile(path: String, mimeType: String?)
+    /**
+     * Keeps a downloaded file where the person finds it again: Android's Downloads, an iPhone's
+     * share sheet (Save Video, Save to Files). Returns a line to show, or null when there's none.
+     */
+    suspend fun saveFile(path: String, name: String, mimeType: String?): String? { openFile(path, mimeType); return null }
     /** Asks the person for files to upload. Empty if they changed their mind. */
     suspend fun pickFiles(): List<PickedFile>
     /** Whether attaching offers the phone's own photo picker beside its files ([pickMedia]). */

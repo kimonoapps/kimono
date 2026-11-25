@@ -125,6 +125,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.withLink
@@ -1086,37 +1087,84 @@ internal fun cacheFile(platform: Platform, folder: String, name: String, bytes: 
     return path.toString()
 }
 
-/** A file it sent or someone attached, opened: pictures here; anything else in the phone's own viewer, which can save or share it. */
+/** A file it sent or someone attached, opened: pictures and (where the phone plays them) videos here; anything else in the phone's own viewer. Download keeps it. */
 @Composable
 private fun OpenAttachment(code: Code, platform: Platform, w: CodeWorkspace, a: CodeAttachment, close: () -> Unit) {
-    /* A video plays here as it streams; fetching it whole is only for handing it to another app. */
-    if (a.isVideo && platform.playsVideo) {
-        var handing by remember(a.path) { mutableStateOf(false) }
-        val stream = remember(a.path) { code.attachmentStream(w.id, a) }
-        if (!handing) {
-            app.kimono.ui.VideoViewer(platform, a.name, stream, onOpenElsewhere = { handing = true }, onClose = close)
-            return
+    var saving by remember(a.path) { mutableStateOf(false) }
+    when {
+        /* A video plays here as it streams; Download fetches it to a file and keeps it. */
+        a.isVideo && platform.playsVideo -> {
+            val stream = remember(a.path) { code.attachmentStream(w.id, a) }
+            app.kimono.ui.VideoViewer(platform, a.name, stream, onOpenElsewhere = { saving = true }, onClose = close)
         }
-        /* Asked for another app: fetched whole and handed over, below. */
-    }
-    val result by produceState<Result<ByteArray>?>(null, a.path) { value = runCatching { code.attachment(w.id, a) } }
-    val bytes = result
-    LaunchedEffect(bytes) {
-        val got = bytes?.getOrNull() ?: return@LaunchedEffect
-        if (!a.isPicture) { runCatching { platform.openFile(cacheFile(platform, w.id, a.name, got), a.type) }; close() }
-    }
-    if (a.isPicture || bytes?.isFailure == true || bytes == null) Dialog(onDismissRequest = close, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Column(Modifier.fillMaxSize().background(Kata.ink)) {
-            Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(a.name, color = Kata.lift, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(start = 8.dp))
-                bytes?.getOrNull()?.let { got -> IconButton(onClick = { runCatching { platform.openFile(cacheFile(platform, w.id, a.name, got), a.type) } }) { Icon(kimonoIcon("download"), "Download", tint = Kata.lift) } }
-                IconButton(onClick = close) { Icon(kimonoIcon("close"), "Close", tint = Kata.lift) }
+        /* Anything else but a picture: fetched to a file as it streams (never whole in memory) and handed to the phone's viewer. */
+        !a.isPicture -> {
+            val problem by produceState<String?>(null, a.path) {
+                value = try {
+                    platform.openFile(code.downloadAttachment(w.id, a, platform.cacheDir()), a.type); close(); null
+                } catch (c: CancellationException) { throw c } catch (e: Exception) { (e as? KimonoProblem)?.message ?: "That file couldn't be opened." }
             }
-            Box(Modifier.weight(1f).fillMaxWidth().navigationBarsPadding(), contentAlignment = Alignment.Center) {
+            AttachmentDialog(a.name, onSave = null, close = close) {
+                val said = problem
+                if (said == null) InkLoader() else Text(said, color = Kata.lift, modifier = Modifier.padding(24.dp))
+            }
+        }
+        else -> {
+            val result by produceState<Result<ByteArray>?>(null, a.path) { value = runCatching { code.attachment(w.id, a) } }
+            val bytes = result
+            AttachmentDialog(a.name, onSave = if (bytes?.isSuccess == true) ({ saving = true }) else null, close = close) {
                 when {
                     bytes == null -> InkLoader()
                     bytes.isFailure -> Text(bytes.exceptionOrNull()?.message ?: "That file couldn't be opened.", color = Kata.lift, modifier = Modifier.padding(24.dp))
                     else -> AsyncImage(model = bytes.getOrThrow(), contentDescription = a.name, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+                }
+            }
+        }
+    }
+    if (saving) SaveAttachment(code, platform, w, a) { saving = false }
+}
+
+/** An opened file, full screen on ink: its name, Download where it can be kept, and Close. */
+@Composable
+private fun AttachmentDialog(name: String, onSave: (() -> Unit)?, close: () -> Unit, content: @Composable () -> Unit) {
+    Dialog(onDismissRequest = close, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Column(Modifier.fillMaxSize().background(Kata.ink)) {
+            Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(name, color = Kata.lift, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(start = 8.dp))
+                onSave?.let { IconButton(onClick = it) { Icon(kimonoIcon("download"), "Download", tint = Kata.lift) } }
+                IconButton(onClick = close) { Icon(kimonoIcon("close"), "Close", tint = Kata.lift) }
+            }
+            Box(Modifier.weight(1f).fillMaxWidth().navigationBarsPadding(), contentAlignment = Alignment.Center) { content() }
+        }
+    }
+}
+
+/**
+ * Keeps a file: fetched to a file as it streams, with how far it's got, then saved where the phone
+ * keeps downloads (Android's Downloads; an iPhone's share sheet, for Save Video or Save to Files).
+ */
+@Composable
+private fun SaveAttachment(code: Code, platform: Platform, w: CodeWorkspace, a: CodeAttachment, close: () -> Unit) {
+    var got by remember(a.path) { mutableStateOf(0L) }
+    var line by remember(a.path) { mutableStateOf<String?>(null) }
+    LaunchedEffect(a.path) {
+        val path = try { code.downloadAttachment(w.id, a, platform.cacheDir()) { got = it } }
+            catch (c: CancellationException) { throw c } catch (e: Exception) { line = (e as? KimonoProblem)?.message ?: "That file couldn't be downloaded."; return@LaunchedEffect }
+        val said = try { platform.saveFile(path, a.name, a.type) } catch (c: CancellationException) { throw c } catch (_: Exception) { "Couldn't save ${a.name}." }
+        if (said == null) { close(); return@LaunchedEffect }
+        line = said
+        delay(1400)
+        close()
+    }
+    Dialog(onDismissRequest = close) {
+        Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            Column(Modifier.widthIn(min = 240.dp, max = 320.dp).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(a.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                val said = line
+                if (said != null) Text(said, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+                else {
+                    InkLoader(size = 24.dp)
+                    Text(if (a.size > 0) "${readableSize(got)} of ${readableSize(a.size)}" else readableSize(got), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -1141,6 +1189,7 @@ private fun fileKind(name: String, type: String): String {
 @Composable
 private fun SentFile(code: Code, platform: Platform, w: CodeWorkspace, file: CodeAttachment) {
     var opening by remember { mutableStateOf(false) }
+    var saving by remember { mutableStateOf(false) }
     Surface(onClick = { opening = true }, shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             if (file.isPicture) AttachedPicture(code, w, file, Modifier.size(56.dp))
@@ -1151,10 +1200,11 @@ private fun SentFile(code: Code, platform: Platform, w: CodeWorkspace, file: Cod
                 Text(file.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text("${fileKind(file.name, file.type)} · ${readableSize(file.size)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            IconButton(onClick = { opening = true }) { Icon(kimonoIcon("download"), "Download") }
+            IconButton(onClick = { saving = true }) { Icon(kimonoIcon("download"), "Download") }
         }
     }
     if (opening) OpenAttachment(code, platform, w, file) { opening = false }
+    if (saving) SaveAttachment(code, platform, w, file) { saving = false }
 }
 
 /* ── tool calls ── */

@@ -60,6 +60,7 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         KimonoKeychainGroup: "$(AppIdentifierPrefix)app.kimono.shared"
+        NSPhotoLibraryAddUsageDescription: Save videos and photos from Kimono to your library.
         NSPhotoLibraryUsageDescription: Pick photos to attach, or one for your portrait.
         NSMicrophoneUsageDescription: Speak a message to Kimono AI instead of typing it.
         NSLocationWhenInUseUsageDescription: Find mosques and prayer times near you.

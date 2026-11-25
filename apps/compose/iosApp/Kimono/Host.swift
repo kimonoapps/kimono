@@ -94,6 +94,20 @@ final class Host: NSObject, IosHost, @unchecked Sendable {
         }
     }
 
+    func saveFile(path: String) {
+        DispatchQueue.main.async {
+            guard let top = Host.top() else { return }
+            let sheet = UIActivityViewController(activityItems: [URL(fileURLWithPath: path)], applicationActivities: nil)
+            /* On iPad, a popover from the middle of the screen, as share(text:) explains. */
+            if let popover = sheet.popoverPresentationController {
+                popover.sourceView = top.view
+                popover.sourceRect = CGRect(x: top.view.bounds.midX, y: top.view.bounds.midY, width: 0, height: 0)
+                popover.permittedArrowDirections = []
+            }
+            top.present(sheet, animated: true)
+        }
+    }
+
     func appBuild() -> Int64 { Int64(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "") ?? 0 }
 
     /// Drive switched on or off on the server: Kimono joins or leaves the Files app to match.

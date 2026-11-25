@@ -54,6 +54,8 @@ interface IosHost {
     fun cacheDir(): String
     /** Shows a downloaded file in Quick Look, with its share button. */
     fun openFile(path: String)
+    /** The share sheet with a downloaded file: Save Video, Save to Files, or another app. */
+    fun saveFile(path: String)
     /** The app's build number (CFBundleVersion). */
     fun appBuild(): Long
     /** The share sheet, with a link or some text. */
@@ -164,6 +166,7 @@ private class IosPlatform(private val host: IosHost) : Platform {
         (platform.Foundation.NSFileManager.defaultManager.attributesOfFileSystemForPath(keepDir(), null)?.get(platform.Foundation.NSFileSystemFreeSize) as? platform.Foundation.NSNumber)?.longLongValue
     }.getOrNull()
     override fun openFile(path: String, mimeType: String?) = host.openFile(path)
+    override suspend fun saveFile(path: String, name: String, mimeType: String?): String? { host.saveFile(path); return null }
     override fun share(text: String) = host.share(text)
     override fun driveAvailable(on: Boolean) = host.driveAvailable(on)
     override val reduceMotion: Boolean get() = platform.UIKit.UIAccessibilityIsReduceMotionEnabled()

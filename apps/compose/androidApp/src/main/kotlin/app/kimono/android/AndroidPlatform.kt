@@ -251,6 +251,28 @@ class AndroidPlatform(private val context: Context) : Platform {
         (activity ?: context).startActivity(chooser)
     }
 
+    /** Copied into Downloads, where the Files app and the gallery find it; before Android 10, handed to an app instead. */
+    override suspend fun saveFile(path: String, name: String, mimeType: String?): String? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) { openFile(path, mimeType); return null }
+        return withContext(Dispatchers.IO) {
+            val resolver = context.contentResolver
+            val values = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, name)
+                mimeType?.let { put(android.provider.MediaStore.MediaColumns.MIME_TYPE, it) }
+                put(android.provider.MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+            val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return@withContext "Couldn't save $name."
+            try {
+                resolver.openOutputStream(uri)!!.use { out -> FileInputStream(File(path)).use { it.copyTo(out, 64 * 1024) } }
+                resolver.update(uri, android.content.ContentValues().apply { put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
+                "Saved to Downloads"
+            } catch (e: Exception) {
+                resolver.delete(uri, null, null)
+                "Couldn't save $name."
+            }
+        }
+    }
+
     override val build: Long get() = SelfUpdate.build(context)
     override val version: String get() = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: ""
 
