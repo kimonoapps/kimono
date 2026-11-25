@@ -33,6 +33,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import app.kimono.ui.readable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -621,14 +622,16 @@ private fun ChatBody(code: Code, drive: Drive, platform: Platform, marks: AiMark
     val shownAt = remember(flat.size) { now() }
     /* A tap on the conversation itself (not on something in it) puts the keyboard away, ending a rename as tapping away does on the website. */
     Column(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures(onTap = { focusManager.clearFocus() }) }) {
-        Box(Modifier.weight(1f).fillMaxWidth().pointerInput(Unit) {
+        /* Measured, so on an iPad the conversation stays a readable column, centred, while it still scrolls from either edge. */
+        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().pointerInput(Unit) {
             val reach = 72.dp.toPx()
             detectHorizontalDragGestures(
                 onDragEnd = { scope.launch { reveal.animateTo(0f, androidx.compose.animation.core.spring(dampingRatio = .8f)) } },
                 onDragCancel = { scope.launch { reveal.animateTo(0f) } },
             ) { change, dx -> if (dx < 0 || reveal.value > 0f) { change.consume(); scope.launch { reveal.snapTo((reveal.value - dx / reach).coerceIn(0f, 1f)) } } }
         }) {
-            LazyColumn(state = list, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxSize()) {
+            val side = app.kimono.ui.gutter(maxWidth, app.kimono.ui.Readable.Text, least = 16.dp)
+            LazyColumn(state = list, contentPadding = PaddingValues(horizontal = side, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxSize()) {
                 if (items.isEmpty() && !w.running) item(key = "empty") { Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) { InkLoader() } }
                 items(items, key = { it.key }) { item ->
                     /* What arrives once the chat is open fades and settles into place; a finished reply takes its draft's place without a fade. */
@@ -661,11 +664,12 @@ private fun ChatBody(code: Code, drive: Drive, platform: Platform, marks: AiMark
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp),
             ) { Text("Latest ↓", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp)) }
         }
-        if (w.canWrite) Composer(code, drive, platform, marks, w, lastContext, usageTop, standIn = asked?.takeIf { it.question.id != sentQuestion && !w.running }?.let { draft -> @Composable {
+        /* The composer lines up under the conversation's column (its own 16dp sides included). */
+        if (w.canWrite) Box(Modifier.readable(app.kimono.ui.Readable.Text + 32.dp)) { Composer(code, drive, platform, marks, w, lastContext, usageTop, standIn = asked?.takeIf { it.question.id != sentQuestion && !w.running }?.let { draft -> @Composable {
             QuestionPanel(draft,
                 onAnswer = { replies -> answerQuestion(draft, replies) },
                 onSkip = { answerQuestion(draft, null) })
-        } })
+        } }) }
         else Text("You can view this chat", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).bottomChrome().padding(horizontal = 24.dp, vertical = 16.dp))
     }
@@ -1662,7 +1666,7 @@ private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMark
     }
     /* A question it asked stands in the bar's place; the settings sheet and what was written stay. */
     if (standIn != null) standIn()
-    else Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).bottomChrome().imePadding().padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 4.dp)) {
+    else Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).bottomChrome().imePadding().padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = app.kimono.ui.composerGap())) {
         Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (switching != null) {

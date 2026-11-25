@@ -8,7 +8,8 @@ fetch() {
   [ -d "Frameworks/$1.xcframework" ] && return 0
   tmp="Frameworks/$1.zip"
   curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 -o "$tmp" "$2" || { rm -f "$tmp"; return 1; }
-  sum=$(shasum -a 256 "$tmp" | cut -d' ' -f1)
+  # shasum on macOS; sha256sum where there is no Perl shasum (a Linux building with xtool).
+  sum=$( (command -v shasum >/dev/null && shasum -a 256 "$tmp" || sha256sum "$tmp") | cut -d' ' -f1)
   [ "$sum" = "$3" ] || { echo "$1: checksum mismatch" >&2; rm -f "$tmp"; return 1; }
   unzip -qo "$tmp" -d Frameworks && rm -f "$tmp"
 }

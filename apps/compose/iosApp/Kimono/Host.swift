@@ -107,8 +107,19 @@ final class Host: NSObject, IosHost, @unchecked Sendable {
 
     func share(text: String) {
         DispatchQueue.main.async {
+            guard let top = Host.top() else { return }
             let sheet = UIActivityViewController(activityItems: [URL(string: text) ?? text], applicationActivities: nil)
-            Host.top()?.present(sheet, animated: true)
+            /*
+             * On iPad the share sheet is a popover, and UIKit throws if it has nowhere to point.
+             * Compose draws everything in one view, so there's no button to anchor to: it rises
+             * from the middle of the screen with no arrow. On iPhone this is ignored.
+             */
+            if let popover = sheet.popoverPresentationController {
+                popover.sourceView = top.view
+                popover.sourceRect = CGRect(x: top.view.bounds.midX, y: top.view.bounds.midY, width: 0, height: 0)
+                popover.permittedArrowDirections = []
+            }
+            top.present(sheet, animated: true)
         }
     }
 

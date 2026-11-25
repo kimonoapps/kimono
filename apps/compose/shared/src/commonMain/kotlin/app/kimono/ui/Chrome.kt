@@ -49,7 +49,7 @@ fun KimonoTopBar(title: String, onBack: (() -> Unit)? = null, mark: (@Composable
 }
 
 @Composable
-fun GroupLabel(text: String, modifier: Modifier = Modifier.padding(start = 28.dp, top = 24.dp, bottom = 8.dp)) {
+fun GroupLabel(text: String, modifier: Modifier = Modifier.readable(Readable.Form).padding(start = 28.dp, top = 24.dp, bottom = 8.dp)) {
     Text(text, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = modifier)
 }
 
@@ -69,7 +69,8 @@ class GroupItem(
  */
 @Composable
 fun KimonoGroup(items: List<GroupItem>, modifier: Modifier = Modifier) {
-    Column(modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
+    /* A settings list as wide as a phone's, centred on an iPad, its label (GroupLabel) lined up over it. */
+    Column(modifier.readable(Readable.Form).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
         items.forEachIndexed { index, item ->
             val tint = if (item.danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
             SegmentedListItem(

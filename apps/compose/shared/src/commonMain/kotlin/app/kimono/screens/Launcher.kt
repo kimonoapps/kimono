@@ -24,7 +24,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -107,7 +107,8 @@ fun LauncherScreen(
 
     KimonoRefresh(refreshing, { scope.launch { refreshing = true; load(); refreshing = false } }, Modifier.fillMaxSize()) {
         LazyVerticalGrid(
-            GridCells.Fixed(2),
+            /* Two tiles across on a phone; on an iPad as many tile-sized columns as fit. */
+            app.kimono.ui.AdaptiveAtLeast(168.dp),
             state = grid,
             modifier = Modifier.fillMaxSize().pointerInput(shown != null) {
                 if (shown == null) return@pointerInput
@@ -164,13 +165,13 @@ fun LauncherScreen(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            item(span = { GridItemSpan(2) }, key = "header") { header() }
+            item(span = { GridItemSpan(maxLineSpan) }, key = "header") { header() }
             when {
-                shown == null && problem == null -> item(span = { GridItemSpan(2) }) { Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) { InkLoader() } }
-                shown == null -> item(span = { GridItemSpan(2) }) { Problem(problem) }
+                shown == null && problem == null -> item(span = { GridItemSpan(maxLineSpan) }) { Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) { InkLoader() } }
+                shown == null -> item(span = { GridItemSpan(maxLineSpan) }) { Problem(problem) }
                 else -> {
                 if (home != null) item(key = "home") { HomeTile(onClick = home) }
-                if (shown.isEmpty()) item(span = { GridItemSpan(2) }) {
+                if (shown.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
                     Text("Pin apps on Home to keep them here.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp))
                 }
                 items(shown, key = { "app:" + it.id }) { app ->
@@ -238,5 +239,60 @@ internal fun AppTile(app: LauncherApp, here: PhoneAppHere, modifier: Modifier = 
 fun AppsSheet(drive: Drive, here: (LauncherApp) -> PhoneAppHere, onDismiss: () -> Unit, home: () -> Unit, open: (LauncherApp) -> Unit) {
     InkSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), wash = false, containerColor = MaterialTheme.colorScheme.surface) {
         Box(Modifier.fillMaxWidth().fillMaxHeight(.9f)) { LauncherScreen(drive, here, header = { KimonoTopBar("My apps") }, home = home, open = open) }
+    }
+}
+
+/**
+ * Kimono's own suite, in the order the iPad's rail and its Apps card list it. Ids as the server's
+ * app definitions name them (Photos is Immich). Only the ones this household has are shown.
+ */
+internal val suiteIds = listOf(app.kimono.data.Code.APP_ID, "kimono-drive", "immich", app.kimono.data.Music.APP_ID, "kimono-watch", app.kimono.data.Books.APP_ID, app.kimono.data.Notes.APP_ID)
+
+/** The suite's apps among [apps], in [suiteIds]' order. */
+internal fun suiteOf(apps: List<LauncherApp>): List<LauncherApp> = suiteIds.mapNotNull { id -> apps.firstOrNull { it.id == id } }
+
+/**
+ * 庫 Every app as a card in the middle of a wide window (an iPad), where the bloom brings it up:
+ * Home, then Kimono's suite, then whatever else the household has. A phone has [AppsSheet].
+ */
+@Composable
+fun AppsDialog(drive: Drive, here: (LauncherApp) -> PhoneAppHere, onDismiss: () -> Unit, home: () -> Unit, open: (LauncherApp) -> Unit) {
+    val apps by drive.launcher.collectAsState()
+    var problem by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) { if (drive.launcher.value == null) drive.knownApps(); try { drive.otherApps(); problem = null } catch (p: KimonoProblem) { problem = p.message } }
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+        app.kimono.ui.Surface(
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(32.dp),
+            color = MaterialTheme.colorScheme.surface,
+            modifier = Modifier.padding(32.dp).widthIn(max = 760.dp).fillMaxWidth().fillMaxHeight(.8f),
+        ) {
+            val all = apps
+            val suite = all?.let { suiteOf(it) }.orEmpty()
+            val others = all.orEmpty().filter { it.id !in suiteIds }
+            /* Three across, whatever the card's width: tidier than as many as fit; the rest scroll. */
+            LazyVerticalGrid(
+                androidx.compose.foundation.lazy.grid.GridCells.Fixed(3),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                item(span = { GridItemSpan(maxLineSpan) }, key = "title") { KimonoTopBar("Apps") }
+                when {
+                    all == null && problem == null -> item(span = { GridItemSpan(maxLineSpan) }) { Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) { InkLoader() } }
+                    all == null -> item(span = { GridItemSpan(maxLineSpan) }) { Problem(problem) }
+                    else -> {
+                        item(key = "home") { HomeTile(onClick = home) }
+                        items(suite, key = { "app:" + it.id }) { a -> AppTile(a, here(a)) { open(a) } }
+                        if (others.isNotEmpty()) {
+                            item(span = { GridItemSpan(maxLineSpan) }, key = "more") {
+                                Text("More apps", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp, top = 12.dp, bottom = 2.dp))
+                            }
+                            items(others, key = { "app:" + it.id }) { a -> AppTile(a, here(a)) { open(a) } }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

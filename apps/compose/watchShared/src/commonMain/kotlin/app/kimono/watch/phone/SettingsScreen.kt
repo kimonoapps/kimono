@@ -154,7 +154,8 @@ fun SettingsScreen(onClose: () -> Unit, onProfiles: (() -> Unit)? = null, tv: Bo
             }, label = "settings") { part ->
                 Column(Modifier.fillMaxSize()) {
                     TopBar(part?.title ?: if (playerOnly) "Player" else "Settings", gutter) { if (part != null) open = null else onClose() }
-                    if (part == null) LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = 4.dp, bottom = navBottom + 32.dp, start = gutter, end = gutter)) {
+                    /* On a wide window (an iPad) the page is one column, 620dp at most, in the middle. */
+                    if (part == null) LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = 4.dp, bottom = navBottom + 32.dp, start = gutter, end = gutter), horizontalAlignment = Alignment.CenterHorizontally) {
                         if (!playerOnly) item("me") {
                             watch.accounts.active.collectAsState().value?.let { pr ->
                                 Row(Modifier.widthIn(max = 620.dp).fillMaxWidth().riseIn(0, opened).clip(RoundedCornerShape(14.dp)).background(Night.surface)
@@ -170,12 +171,12 @@ fun SettingsScreen(onClose: () -> Unit, onProfiles: (() -> Unit)? = null, tv: Bo
                             }
                         }
                         rows.forEachIndexed { i, it ->
-                            if (!playerOnly && (i == 0 || it.player != rows[i - 1].player)) item("half${it.player}") { Half(if (it.player) "Player" else "App", first = false) }
+                            if (!playerOnly && (i == 0 || it.player != rows[i - 1].player)) item("half${it.player}") { Box(Modifier.widthIn(max = 620.dp).fillMaxWidth()) { Half(if (it.player) "Player" else "App", first = false) } }
                             item("p${it.name}") { GroupRow(it, it.summary(p, state, watch), Modifier.widthIn(max = 620.dp).riseIn(i + 1, opened)) { open = it } }
                         }
                     }
-                    else Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = gutter, end = gutter, bottom = navBottom + 32.dp)) {
-                        Column(Modifier.widthIn(max = 620.dp)) { PartBody(part, watch, state, vm, p, onProfiles, tv = false) }
+                    else Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = gutter, end = gutter, bottom = navBottom + 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Column(Modifier.widthIn(max = 620.dp).fillMaxWidth()) { PartBody(part, watch, state, vm, p, onProfiles, tv = false) }
                     }
                 }
             }
@@ -186,9 +187,12 @@ fun SettingsScreen(onClose: () -> Unit, onProfiles: (() -> Unit)? = null, tv: Bo
 /** The page's own bar: back, then its title. */
 @Composable
 private fun TopBar(title: String, gutter: Dp, onBack: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(top = statusTop + 6.dp, start = gutter - 10.dp, end = gutter, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(44.dp).clip(CircleShape).clickableScale(onBack), contentAlignment = Alignment.Center) { I(Ic.back) }
-        Text(title, style = display(26), modifier = Modifier.padding(start = 6.dp))
+    /* Lined up with the page's column, centred with it on a wide window. */
+    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+        Row(Modifier.widthIn(max = 620.dp + gutter * 2).fillMaxWidth().padding(top = statusTop + 6.dp, start = gutter - 10.dp, end = gutter, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(44.dp).clip(CircleShape).clickableScale(onBack), contentAlignment = Alignment.Center) { I(Ic.back) }
+            Text(title, style = display(26), modifier = Modifier.padding(start = 6.dp))
+        }
     }
 }
 

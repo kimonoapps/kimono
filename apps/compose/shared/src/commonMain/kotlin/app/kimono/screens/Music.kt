@@ -34,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.coerceAtMost
 import androidx.compose.ui.unit.dp
 import app.kimono.data.FriendListening
 import app.kimono.data.FriendParty
@@ -226,7 +227,13 @@ private fun ListenAgain(player: MusicPlayer, tracks: List<Track>, me: app.kimono
                 Text("Listen again", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             }
         }
-        HorizontalPager(pager, contentPadding = PaddingValues(start = 16.dp, end = 40.dp), pageSpacing = 12.dp, verticalAlignment = Alignment.Top, modifier = Modifier.padding(top = 12.dp)) { n ->
+        /*
+         * A page is the screen less its margins on a phone, as before; on an iPad it stops at about
+         * a phone's width and the next pages show beside it, rather than nine tiles each a third of a tablet wide.
+         */
+        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.padding(top = 12.dp)) {
+        val page = (maxWidth - 56.dp).coerceAtMost(420.dp)
+        HorizontalPager(pager, contentPadding = PaddingValues(start = 16.dp, end = 40.dp), pageSize = androidx.compose.foundation.pager.PageSize.Fixed(page), pageSpacing = 12.dp, verticalAlignment = Alignment.Top) { n ->
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 pages[n].chunked(3).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -240,6 +247,7 @@ private fun ListenAgain(player: MusicPlayer, tracks: List<Track>, me: app.kimono
                     }
                 }
             }
+        }
         }
         if (pages.size > 1) Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.Center) {
             repeat(pages.size) { n ->

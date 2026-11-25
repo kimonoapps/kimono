@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import app.kimono.data.AccountProfile
 import app.kimono.data.KimonoProblem
 import app.kimono.data.Platform
+import app.kimono.ui.readable
 import app.kimono.data.Session
 import app.kimono.data.SessionList
 import app.kimono.theme.Kata
@@ -192,8 +193,10 @@ fun SettingsScreen(session: Session, platform: Platform, me: AccountProfile?, op
                 GroupLabel("Kimono")
                 KimonoGroup(listOf(GroupItem("Manage apps", icon = "apps") { open("manage") }))
             }
+            GroupLabel("Opening")
+            OpenOnHomeRow(platform)
             GroupLabel("Appearance")
-            Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(Modifier.readable(app.kimono.ui.Readable.Form).padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 lookPages.forEach { (key, page) ->
                     app.kimono.ui.InkPageChoice(page.first, page.second, chosen = look == key, modifier = Modifier.weight(1f), onChoose = {
                         app.kimono.theme.Appearance.choice.value = key
@@ -333,11 +336,37 @@ private fun NotificationsRow(platform: Platform) {
         onClick = { on?.let { set(!it) } },
         shapes = ListItemDefaults.segmentedShapes(0, 1),
         colors = segmentColors(),
-        modifier = Modifier.padding(horizontal = 16.dp),
+        /* As wide as a phone's list, centred on an iPad, like the groups around it (KimonoGroup). */
+        modifier = Modifier.readable(app.kimono.ui.Readable.Form).padding(horizontal = 16.dp),
         leadingContent = { InkBlot("notifications") { Icon(kimonoIcon("bolt"), null, tint = Kata.plum, modifier = Modifier.size(20.dp)) } },
         supportingContent = { Text("When an update is ready") },
         trailingContent = { on?.let { now -> androidx.compose.material3.Switch(now, { set(it) }) } },
     ) { Text("Notifications", style = MaterialTheme.typography.bodyLarge) }
+}
+
+/** Open on Home: after Kimono has been closed, it starts on Home rather than where you were. Kept on this phone. */
+@Composable
+private fun OpenOnHomeRow(platform: Platform) {
+    val scope = rememberCoroutineScope()
+    var on by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(Unit) { on = platform.readKept(app.kimono.OpenOnHome.KEY) != "off" }
+    SegmentedListItem(
+        onClick = {},
+        shapes = ListItemDefaults.segmentedShapes(0, 1),
+        colors = segmentColors(),
+        /* As wide as a phone's list, centred on an iPad, like the groups around it (KimonoGroup). */
+        modifier = Modifier.readable(app.kimono.ui.Readable.Form).padding(horizontal = 16.dp),
+        leadingContent = { InkBlot("open-on-home") { Icon(kimonoIcon("home"), null, tint = Kata.plum, modifier = Modifier.size(20.dp)) } },
+        supportingContent = { Text("After Kimono has been closed, start on Home rather than where you were") },
+        trailingContent = {
+            on?.let { now ->
+                androidx.compose.material3.Switch(now, { next ->
+                    on = next
+                    scope.launch { platform.keep(app.kimono.OpenOnHome.KEY, if (next) "on" else "off") }
+                })
+            }
+        },
+    ) { Text("Open on Home", style = MaterialTheme.typography.bodyLarge) }
 }
 
 @Composable
@@ -355,7 +384,8 @@ private fun InvisibleRow(session: Session) {
         onClick = {},
         shapes = ListItemDefaults.segmentedShapes(0, 1),
         colors = segmentColors(),
-        modifier = Modifier.padding(horizontal = 16.dp),
+        /* As wide as a phone's list, centred on an iPad, like the groups around it (KimonoGroup). */
+        modifier = Modifier.readable(app.kimono.ui.Readable.Form).padding(horizontal = 16.dp),
         leadingContent = { InkBlot("invisible") { Icon(kimonoIcon("lock"), null, tint = Kata.plum, modifier = Modifier.size(20.dp)) } },
         supportingContent = { Text(problem ?: "Friends see your name and portrait") },
         trailingContent = {

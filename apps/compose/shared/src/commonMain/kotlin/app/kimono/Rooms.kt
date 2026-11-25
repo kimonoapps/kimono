@@ -6,13 +6,25 @@ import app.kimono.ui.bottomChrome
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.NavigationRailItemDefaults
 import androidx.compose.material3.ShortNavigationBarItem
 import androidx.compose.material3.ShortNavigationBarItemDefaults
 import androidx.compose.material3.Text
 import app.kimono.ui.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.text.style.TextOverflow
+import coil3.compose.AsyncImage
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -20,6 +32,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import app.kimono.ui.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -116,6 +132,80 @@ fun RoomBar(app: RoomApp, route: String?, launcherApp: LauncherApp?, me: Account
                     if (app === kimono) ShortNavigationBarItem(selected = route == "you", onClick = { go("you") }, icon = { Portrait(me?.picture, me?.name, me?.username, 24.dp) }, label = { Text("You") }, colors = colors, modifier = Modifier.weight(1f))
                 }
             }
+        }
+    }
+}
+
+/**
+ * The rail down the left edge of a wide window (an iPad, either way up), the same whichever
+ * app you're in: the bloom at the top brings up every app, then Home and Kimono's suite
+ * ([apps]), and You at the foot. The app you're in is lit, its own rooms (Kimono AI's
+ * Chats, Drive's Trash, Music's Search) gathered under it. A bar across the bottom of a
+ * tablet puts every room a long reach from where the thumbs rest; a rail keeps them beside
+ * the content and gives the screen its height back.
+ */
+@Composable
+fun RoomRail(
+    app: RoomApp, route: String?, launcherApp: LauncherApp?, me: AccountProfile?, go: (String) -> Unit, startTask: () -> Unit, openApps: () -> Unit,
+    apps: List<LauncherApp> = emptyList(), openApp: (LauncherApp) -> Unit = {},
+) {
+    val accent = if (app === music) app.accent else launcherApp?.accent ?: app.accent
+    AppAccentTheme(accent) {
+        val colors = NavigationRailItemDefaults.colors(
+            indicatorColor = MaterialTheme.colorScheme.secondaryContainer, selectedIconColor = MaterialTheme.colorScheme.primary,
+            selectedTextColor = MaterialTheme.colorScheme.onSurface, unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant, unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        NavigationRail(
+            containerColor = MaterialTheme.colorScheme.surface,
+            header = {
+                Column(
+                    Modifier.padding(top = 8.dp, bottom = 12.dp).width(80.dp).clip(RoundedCornerShape(24.dp)).clickable(onClickLabel = "Every app", onClick = openApps).padding(vertical = 6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    if (accent == null) KimonoBranch(36.dp) else InkBloom(launcherApp?.id ?: app.id, accent, launcherApp?.glyph ?: app.glyph, 42.dp)
+                    Text(if (app.id == "kimono-code") app.name else launcherApp?.name ?: app.name, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, maxLines = 1, modifier = Modifier.padding(top = 2.dp))
+                }
+            },
+        ) {
+            /* The app you're in stays on the rail even when it isn't one of the suite (VPN, say). */
+            val listed = if (app !== kimono && launcherApp != null && apps.none { it.id == app.id }) apps + launcherApp else apps
+            /* Tapping the app you're in again folds its rooms away (and back); another app opens with them showing. */
+            var folded by remember(app.id) { mutableStateOf(false) }
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
+                NavigationRailItem(
+                    selected = route == "home", onClick = { go("home") },
+                    icon = { Icon(kimonoIcon("home"), null) }, label = { Text("Home", maxLines = 1, softWrap = false) }, colors = colors,
+                )
+                listed.forEach { a ->
+                    val inside = app !== kimono && a.id == app.id
+                    NavigationRailItem(
+                        /* Lit for the app you're in; its rooms below say where in it. */
+                        selected = inside && (folded || app.rooms.none { it.route == route && !it.action }), onClick = { if (inside && app.rooms.isNotEmpty()) folded = !folded else openApp(a) }, colors = colors,
+                        icon = {
+                            Box(Modifier.size(28.dp), contentAlignment = Alignment.Center) {
+                                InkBloom(a.id, a.accent, a.glyph, 28.dp)
+                                /* An app without one of Kimono's glyphs wears its own icon in the heart, as on its tile. */
+                                if (a.glyph == null && a.icon != null) AsyncImage(model = a.icon, contentDescription = null, modifier = Modifier.size(28.dp * .3f))
+                            }
+                        },
+                        label = { Text(if (a.id == "kimono-code") "Kimono AI" else a.name, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis) },
+                        modifier = Modifier.widthIn(max = 88.dp),
+                    )
+                    if (inside && app.rooms.isNotEmpty() && !folded) Column(
+                        Modifier.padding(vertical = 2.dp).clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceContainer).padding(vertical = 4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        app.rooms.forEach { room ->
+                            NavigationRailItem(
+                                selected = route == room.route, onClick = { if (room.action) startTask() else go(room.route) },
+                                icon = { Icon(kimonoIcon(room.icon), null) }, label = { Text(room.label, maxLines = 1, softWrap = false) }, colors = colors,
+                            )
+                        }
+                    }
+                }
+            }
+            /* You, at the foot whichever app you're in: your profile and settings a tap away. */
+            NavigationRailItem(selected = route == "you", onClick = { go("you") }, icon = { Portrait(me?.picture, me?.name, me?.username, 24.dp) }, label = { Text("You") }, colors = colors, modifier = Modifier.padding(bottom = 12.dp))
         }
     }
 }

@@ -130,6 +130,8 @@ final class Host: NSObject, IosWatchHost, @unchecked Sendable {
     }
 
     static func rotate(to mask: UIInterfaceOrientationMask) {
+        /* An iPad is never turned for you: it stays the way it's held (and may be sharing the screen). */
+        if AppDelegate.isPad { return }
         guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first else { return }
         scene.windows.first?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
         scene.requestGeometryUpdate(.iOS(interfaceOrientations: mask)) { _ in }
@@ -169,8 +171,12 @@ final class PlayerContainer: UIViewController {
     /** Turned upright from the player's rotate button; it starts on its side. */
     var upright = false
 
-    override var supportedInterfaceOrientations: UIInterfaceOrientationMask { upright ? .portrait : .landscape }
-    override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation { .landscapeRight }
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask { AppDelegate.isPad ? .all : upright ? .portrait : .landscape }
+    override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation {
+        /* An iPad presents the player the way it's held now. */
+        if AppDelegate.isPad, let held = view.window?.windowScene?.interfaceOrientation ?? UIApplication.shared.connectedScenes.compactMap({ ($0 as? UIWindowScene)?.interfaceOrientation }).first { return held }
+        return .landscapeRight
+    }
     override var prefersStatusBarHidden: Bool { true }
     override var prefersHomeIndicatorAutoHidden: Bool { true }
     override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge { .all }

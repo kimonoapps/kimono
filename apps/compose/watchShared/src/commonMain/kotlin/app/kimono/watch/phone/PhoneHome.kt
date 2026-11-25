@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -213,6 +214,10 @@ private fun Hero(featured: Card?, rows: List<WatchRow>, go: Go, active: Boolean)
     val logoScale by animateFloatAsState(if (playing && active) 0.72f else 1f, tween(1200), label = "logo")
     val rank = featured?.let { f -> rows.firstOrNull { it.id == "top" }?.items?.firstOrNull { it.id == f.id }?.top }
     val resuming = featured?.let { f -> rows.firstOrNull { it.id == "continue" }?.items?.any { it.id == f.id } } == true
+    /* A window 600dp across (an iPad) has a billboard instead of the phone's tall card, which would outgrow the screen. */
+    val window = androidx.compose.ui.platform.LocalWindowInfo.current.containerSize
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    if (with(density) { window.width.toDp() } >= 600.dp) { WideHero(featured, rank, resuming, go, active, with(density) { window.height.toDp() }); return }
     Box(Modifier.fillMaxWidth()) {
         /* The backdrop bleeding out behind the card, blurred; clipped to the hero, so its scaled-up edge never spills over the row below. */
         if (featured != null) Box(Modifier.matchParentSize().clipToBounds()) {
@@ -239,6 +244,48 @@ private fun Hero(featured: Card?, rows: List<WatchRow>, go: Go, active: Boolean)
             RingButton(if (muted) Ic.mute else Ic.vol, { muted = !muted }, Modifier.align(Alignment.TopEnd).padding(12.dp))
         }
     }
+    }
+}
+
+/**
+ * The hero on a wide window, as the streaming apps do it on a tablet: the backdrop (and its
+ * preview, once it plays) across the whole width, never taller than about two thirds of the
+ * screen, so the first row shows under it; the logo, what's new, the start of the story and
+ * the buttons at its foot on the left, over a shade that keeps them legible.
+ */
+@Composable
+private fun WideHero(featured: Card?, rank: Int?, resuming: Boolean, go: Go, active: Boolean, screenHeight: androidx.compose.ui.unit.Dp) {
+    var playing by remember(featured?.id) { mutableStateOf(false) }
+    var muted by remember { mutableStateOf(true) }
+    val logoScale by animateFloatAsState(if (playing && active) 0.8f else 1f, tween(1200), label = "logo")
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        /* At least enough that the words at its foot stay clear of the header floating over its top (an iPad held upright). */
+        val tall = minOf(maxWidth * 9f / 16f, screenHeight * 0.68f).coerceAtLeast(520.dp)
+        Box(Modifier.fillMaxWidth().height(tall).clipToBounds()) {
+            if (featured == null) { Skeleton(Modifier.fillMaxSize(), RoundedCornerShape(0.dp)); return@Box }
+            Img(featured.backdropLarge ?: featured.backdrop ?: featured.poster, Modifier.fillMaxSize(), alignment = Alignment.TopCenter)
+            /* The preview covers the backdrop's box as the backdrop does: cropped, never letterboxed. */
+            BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                LocalWatch.current.preview.Show(featured.id, featured.fresh?.season ?: if (featured.isFilm) 0 else 1, featured.fresh?.episode ?: if (featured.isFilm) 0 else 1, muted, active, { playing = it },
+                    Modifier.requiredWidth(maxOf(maxWidth, maxHeight * 16f / 9f)).requiredHeight(maxOf(maxHeight, maxWidth * 9f / 16f)))
+            }
+            /* Shade: dark behind the words on the left, the header's band at the top, and into the page at the foot. */
+            Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to Color(0xE6110C0A), 0.45f to Color(0x66110C0A), 0.75f to Color(0x00110C0A))))
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color(0x99110C0A), 0.22f to Color(0x00110C0A), 0.62f to Color(0x00110C0A), 1f to Night.bg)))
+            Column(Modifier.align(Alignment.BottomStart).padding(start = 48.dp, end = 48.dp, bottom = 32.dp).widthIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Logo(featured.name, featured.logo, 56, Modifier.graphicsLayer { scaleX = logoScale; scaleY = logoScale; transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 1f) }, maxHeight = 120.dp)
+                val fresh = featured.fresh
+                if (fresh != null) FreshLine(fresh) else if (rank != null) RankLine(rank, featured.shelf)
+                featured.overview?.takeIf { it.isNotBlank() && !(playing && active) }?.let {
+                    Text(it, style = ui(15, color = Night.fg2), maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    PaperButton(heroPlay(fresh, resuming), Ic.play, { go.play(featured.id, fresh?.season, fresh?.episode) }, Modifier.widthIn(min = 150.dp))
+                    PaperButton("More info", Ic.info, { go.open(featured) }, Modifier.widthIn(min = 150.dp), tonal = true)
+                }
+            }
+            RingButton(if (muted) Ic.mute else Ic.vol, { muted = !muted }, Modifier.align(Alignment.BottomEnd).padding(end = 48.dp, bottom = 34.dp))
+        }
     }
 }
 

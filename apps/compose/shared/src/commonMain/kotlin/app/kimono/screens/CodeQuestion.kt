@@ -107,7 +107,7 @@ internal fun QuestionPanel(draft: QuestionDraft, onAnswer: (List<QuestionReply>)
     fun next() {
         if (draft.at < draft.count - 1) draft.at++ else onAnswer(draft.replies())
     }
-    Column(Modifier.fillMaxWidth().background(scheme.surface).bottomChrome().imePadding().padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 4.dp)) {
+    Column(Modifier.fillMaxWidth().background(scheme.surface).bottomChrome().imePadding().padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = app.kimono.ui.composerGap())) {
         Surface(shape = RoundedCornerShape(28.dp), color = scheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.inkBleed("question:${draft.question.id}", app.kimono.ui.LocalInkTint.current ?: Kata.suo, ground = scheme.surfaceContainer).padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 10.dp)) {
                 AnimatedContent(

@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.plugin.mpp.apple.XCFramework
+
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.kotlin.serialization)
@@ -19,10 +21,17 @@ kotlin {
         minSdk = 26
         androidResources { enable = true }
     }
+    /*
+     * Kimono Watch for iPhone and iPad links this as a framework; watchIos/ builds it from Xcode.
+     * It is also packed as WatchShared.xcframework (`:watchShared:assembleWatchSharedReleaseXCFramework`,
+     * macOS only) for builds without Xcode, such as a local xtool build on Linux.
+     */
+    val xcframework = XCFramework("WatchShared")
     listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
         target.binaries.framework {
             baseName = "WatchShared"
             isStatic = true
+            xcframework.add(this)
         }
     }
 

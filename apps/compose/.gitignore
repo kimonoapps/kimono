@@ -8,3 +8,5 @@ dist/
 iosApp/Kimono.xcodeproj/
 iosApp/build/
 iosApp/*/Info.plist
+# A local xtool build from Linux (not part of the release build): kept out of the repo.
+iosApp/xtool/

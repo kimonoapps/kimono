@@ -17,8 +17,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
@@ -139,6 +144,41 @@ private fun reposOf(list: List<CodeWorkspace>) = list.filter { it.isProject }.gr
  */
 @Composable
 fun AiDrawer(code: Code, admin: Boolean, current: String?, open: (String) -> Unit, content: @Composable (menu: () -> Unit) -> Unit) {
+    /* With room for the chats and a readable chat beside them (an iPad on its side), the drawer is a sidebar. */
+    androidx.compose.foundation.layout.BoxWithConstraints(propagateMinConstraints = true) {
+        if (maxWidth >= 840.dp) AiSidebar(code, admin, current, open, content) else AiModalDrawer(code, admin, current, open, content)
+    }
+}
+
+/** Whether the sidebar was left open, kept across chats so opening another doesn't undo a choice to hide it. */
+private val aiSidebarOpen = androidx.compose.runtime.mutableStateOf(true)
+
+/**
+ * The chats as a sidebar beside the open chat, as on the website: it stays put while you move
+ * between chats, and the menu button shows or hides it at once, as Gemini's does. The chat
+ * takes the width that's left, so its composer (mic and Send at its end) always fits, rather
+ * than a drawer pushing a full-width chat half off the screen and sliding about as it goes.
+ */
+@Composable
+private fun AiSidebar(code: Code, admin: Boolean, current: String?, open: (String) -> Unit, content: @Composable (menu: () -> Unit) -> Unit) {
+    val shown = aiSidebarOpen.value
+    LaunchedEffect(Unit) { app.kimono.AiDrawerAsk.open.collect { if (it) { app.kimono.AiDrawerAsk.open.value = false; aiSidebarOpen.value = true } } }
+    Row(Modifier.fillMaxSize()) {
+        if (shown) {
+            Column(Modifier.width(320.dp).fillMaxHeight().background(MaterialTheme.colorScheme.surfaceContainerLow).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical))) {
+                AiDrawerSheet(code, admin, current, shown = true) { to ->
+                    if (!(to == "code" && current == null)) open(to)
+                }
+            }
+        }
+        Box(Modifier.weight(1f).fillMaxHeight()) {
+            content { aiSidebarOpen.value = !aiSidebarOpen.value }
+        }
+    }
+}
+
+@Composable
+private fun AiModalDrawer(code: Code, admin: Boolean, current: String?, open: (String) -> Unit, content: @Composable (menu: () -> Unit) -> Unit) {
     val drawer = androidx.compose.material3.rememberDrawerState(androidx.compose.material3.DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     LaunchedEffect(drawer) { app.kimono.AiDrawerAsk.open.collect { if (it) { app.kimono.AiDrawerAsk.open.value = false; drawer.open() } } }

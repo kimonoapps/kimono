@@ -151,7 +151,7 @@ fun HomeScreen(
 
     book?.let { key -> BookSheet(books, platform, key, onDismiss = { book = null }, onOpen = { book = it }, say = {}, changed = {}) }
     KimonoRefresh(refreshing, { scope.launch { refreshing = true; coroutineScope { launch { recheck() }; load() }; refreshing = false } }, Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
+        app.kimono.ui.WithGutter(least = 0.dp) { side -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = side, end = side, bottom = 32.dp)) {
             item(key = "head") {
                 Column {
                     TopAppBar(
@@ -277,7 +277,7 @@ fun HomeScreen(
                     }
                 }
             }
-        }
+        } }
     }
 }
 

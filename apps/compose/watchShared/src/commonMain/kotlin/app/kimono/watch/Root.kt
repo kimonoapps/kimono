@@ -193,7 +193,9 @@ private fun Signed(services: WatchServices, profile: Profile, resumed: Int, tvSh
         tvShell.Show(profile, home, hot, list, stack.lastOrNull(), go, onSearch = { push(Screen.Search) }, onProfiles = onProfiles, onSettings = { push(Screen.Settings) }, onBack = ::pop)
         return
     }
-    Box(Modifier.fillMaxSize()) {
+    /* An iPad (or any window 600dp across) opens pages in their wide layout, the one TV has: wider gutters, two columns. */
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+        val wide = maxWidth >= 600.dp
         PhoneShell(profile, home, hot, list, go, onSearch = { push(Screen.Search) }, onProfiles = onProfiles, onSettings = { push(Screen.Settings) }, previewing = stack.isEmpty())
         /* Pages fade up as they open; with less motion asked for, they just appear. */
         val still = app.kimono.watch.ui.reducedMotion()
@@ -201,10 +203,10 @@ private fun Signed(services: WatchServices, profile: Profile, resumed: Int, tvSh
             (if (still) fadeIn(tween(1)) else fadeIn(tween(250)) + slideInVertically(tween(400)) { it / 24 } + scaleIn(tween(400), initialScale = 0.97f)) togetherWith fadeOut(tween(if (still) 1 else 200))
         }, label = "stack") { entry ->
             when (val s = entry?.screen) {
-                is Screen.Title -> TitleScreen(entry.vm { TitleViewModel(services.api, services.toasts, s.id) }, go, s.top, onClose = ::pop, downloads = services.downloads)
+                is Screen.Title -> TitleScreen(entry.vm { TitleViewModel(services.api, services.toasts, s.id) }, go, s.top, onClose = ::pop, downloads = services.downloads, wide = wide)
                 Screen.Search -> SearchScreen(entry.vm { SearchViewModel(services.api) }, go, onClose = ::pop)
-                Screen.Settings -> SettingsScreen(onClose = ::pop, onProfiles = onProfiles)
-                is Screen.Friend -> app.kimono.watch.phone.FriendTasteScreen(s, go, onClose = ::pop)
+                Screen.Settings -> SettingsScreen(onClose = ::pop, onProfiles = onProfiles, wide = wide)
+                is Screen.Friend -> app.kimono.watch.phone.FriendTasteScreen(s, go, onClose = ::pop, wide = wide)
                 null -> Box(Modifier) {}
             }
         }

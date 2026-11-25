@@ -47,3 +47,11 @@ fun hemInsets(): WindowInsets {
 
 @Composable
 fun Modifier.bottomChrome(): Modifier = windowInsetsPadding(hemInsets())
+
+/**
+ * What a composer leaves below itself, over the hem. A phone keeps it tight, the hem already
+ * clear of its home indicator; a wide window (an iPad) gives the pill real room off the bezel,
+ * where the hem's 6pt would sit it nearly flush with the screen's edge.
+ */
+@Composable
+fun composerGap(): androidx.compose.ui.unit.Dp = if (LocalWindowWidth.current != WidthClass.Compact) 16.dp else 4.dp

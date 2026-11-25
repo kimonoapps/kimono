@@ -28,6 +28,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.kimono.data.Platform
 import app.kimono.ui.Seal
+import app.kimono.ui.readable
 import app.kimono.ui.SealTone
 
 /** The clip of turning TestFlight's notifications off for an app; the Portal serves it (public/help). */
@@ -40,7 +41,7 @@ private const val CLIP = "/help/testflight-notifications.mp4"
 @Composable
 fun TestflightQuiet(server: String?, platform: Platform, link: String = "itms-beta://") {
     if (platform.os != "ios" || server == null) return
-    Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(Modifier.readable(app.kimono.ui.Readable.Form).padding(horizontal = 24.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
             "Kimono tells you when an update is ready. To stop TestFlight's alerts and emails too, turn them off in TestFlight.",
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center,

@@ -192,16 +192,20 @@ fun defaultWidgets(d: BoardData): List<Widget> {
     }
 }
 
-/* Where each widget sits: cells of a two-wide grid, packed densely (the first gap each fits). */
+/*
+ * Where each widget sits: cells of a grid [columns] wide (two on a phone, more as the board
+ * widens on an iPad), packed densely (the first gap each fits). Widgets keep their spans, so a
+ * small widget stays one phone-sized cell instead of swelling to half a tablet.
+ */
 private fun span(size: String) = when (size) { "s" -> 1 to 1; "m" -> 2 to 1; else -> 2 to 2 }
 private data class Slot(val col: Int, val row: Int, val w: Int, val h: Int)
-private fun pack(sizes: List<String>): List<Slot> {
+private fun pack(sizes: List<String>, columns: Int = 2): List<Slot> {
     val taken = HashSet<Pair<Int, Int>>()
     return sizes.map { s ->
         val (w, h) = span(s)
         var row = 0
         while (true) {
-            val col = (0..2 - w).firstOrNull { c -> (0 until w).all { dx -> (0 until h).all { dy -> (c + dx to row + dy) !in taken } } }
+            val col = (0..columns - w).firstOrNull { c -> (0 until w).all { dx -> (0 until h).all { dy -> (c + dx to row + dy) !in taken } } }
             if (col != null) {
                 for (dx in 0 until w) for (dy in 0 until h) taken += (col + dx) to (row + dy)
                 return@map Slot(col, row, w, h)
@@ -247,10 +251,12 @@ fun WidgetBoard(
     val dashInk = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .4f)
     BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
         val gap = 10.dp
-        val cell = (maxWidth - gap) / 2
+        /* As many cells of about a phone's half-width as fit; never fewer than two, the widest span. */
+        val columns = ((maxWidth + gap) / (176.dp + gap)).toInt().coerceIn(2, 6)
+        val cell = (maxWidth - gap * (columns - 1)) / columns
         val rowH = cell * .92f
         val cells = list.map { it.size } + (if (editable) listOf(if (list.isEmpty()) "m" else "s") else emptyList())
-        val slots = pack(cells)
+        val slots = pack(cells, columns)
         val rows = slots.maxOfOrNull { it.row + it.h } ?: 0
         fun rect(s: Slot) = with(density) {
             Rect(Offset((s.col * (cell + gap)).toPx(), (s.row * (rowH + gap)).toPx()), androidx.compose.ui.geometry.Size((s.w * cell + (s.w - 1) * gap).toPx(), (s.h * rowH + (s.h - 1) * gap).toPx()))

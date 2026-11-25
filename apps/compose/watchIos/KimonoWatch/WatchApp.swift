@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 import WatchShared
 
-/// Kimono Watch on iPhone: the shared Compose app full screen, the Swift host behind it.
+/// Kimono Watch on iPhone and iPad: the shared Compose app full screen, the Swift host behind it.
 @main
 struct KimonoWatchApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var delegate
@@ -34,11 +34,15 @@ struct WatchView: UIViewControllerRepresentable {
 }
 
 final class AppDelegate: NSObject, UIApplicationDelegate {
-    /// Portrait to browse, landscape while the player is up.
+    /// On iPhone, portrait to browse, landscape while the player is up.
     static var orientations: UIInterfaceOrientationMask = .portrait
 
+    /// An iPad turns every way, browsing or playing: a screen that size reads either way up, and
+    /// Split View and Stage Manager need every orientation. Only an iPhone is held to one.
+    static var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
+
     func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
-        AppDelegate.orientations
+        AppDelegate.isPad ? .all : AppDelegate.orientations
     }
 
     /// iOS wakes the app when a background download finishes; the downloader calls this back once it has the file.

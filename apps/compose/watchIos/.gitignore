@@ -5,3 +5,6 @@ build.log
 MPVKit/Frameworks/
 build-archive/
 archive.log
+MPVKit/.build/
+# A local xtool build from Linux (not part of the release build): kept out of the repo.
+xtool/
