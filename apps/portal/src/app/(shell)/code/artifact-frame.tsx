@@ -18,7 +18,7 @@ export type SceneControl = { n: number; action: "play" | "pause" | "replay" | "s
 /** network: Kimono's engine for it didn't arrive (a bad connection); broken: its own code threw. */
 export type FrameProblem = "network" | "broken";
 
-export function ArtifactFrame({ content, final, title, media, control, onHeight, onScene, onDrawn, onProblem }: { content: string; final: boolean; title: string; media?: string; control: SceneControl | null; onHeight?: (height: number) => void; onScene?: (state: SceneState) => void; /** It drew something: it said how tall it is. */ onDrawn?: () => void; onProblem?: (problem: FrameProblem) => void }) {
+export function ArtifactFrame({ content, final, title, media, control, onHeight, onScene, onDrawn, onProblem }: { content: string; final: boolean; title: string; media?: string; control: SceneControl | null; onHeight?: (height: number) => void; onScene?: (state: SceneState) => void; /** It drew something: it said how tall it is. */ onDrawn?: () => void; onProblem?: (problem: FrameProblem, message: string) => void }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const ready = useRef(false);
   const latest = useRef({ content, final, media });
@@ -63,7 +63,7 @@ export function ArtifactFrame({ content, final, title, media, control, onHeight,
         const message = String((m as { message?: string }).message ?? "");
         console.warn("Artifact:", message);
         /* the frame says "Couldn't load <src>" when a file it needs didn't arrive: the engine, over a bad connection */
-        problemTo.current?.(/^Couldn't load .*\/ai\/lib\//.test(message) ? "network" : "broken");
+        problemTo.current?.(/^Couldn't load .*\/ai\/lib\//.test(message) ? "network" : "broken", message);
       }
       if (m.type === "scene" && typeof m.t === "number" && typeof m.end === "number") { scene.current = { t: m.t, end: m.end, playing: Boolean(m.playing), complete: Boolean(m.complete) }; begin(); }
       if (m.type === "scene" && typeof m.t === "number" && typeof m.end === "number") sceneTo.current?.({ t: m.t, end: m.end, playing: Boolean(m.playing), complete: Boolean(m.complete), count: m.count ?? 1, voiced: Boolean(m.voiced), muted: Boolean(m.muted), blocked: Boolean(m.blocked), held: Boolean(m.held), volume: typeof m.volume === "number" ? m.volume : 1, params: Array.isArray(m.params) ? m.params.filter((p): p is SceneParam => typeof p?.name === "string" && typeof p.min === "number" && typeof p.max === "number" && typeof p.value === "number").slice(0, 8) : [] });

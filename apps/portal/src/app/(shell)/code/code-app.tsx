@@ -2937,8 +2937,18 @@ function ArtifactCard({ name, mode = "inline" }: { name: string; mode?: "inline"
     return () => clearTimeout(timer);
   }, [drawn, ready, writing, tries]);
   const onDrawn = useCallback(() => { setDrawn(true); setStuck(false); }, []);
-  const onProblem = useCallback((p: FrameProblem) => setProblem((was) => was === "network" ? was : p), []);
-  const failing = problem === "network" || (!drawn && stuck);
+  /* what broke, in the frame's own words: Fix it hands it to Kimono AI */
+  const [broke, setBroke] = useState("");
+  const onProblem = useCallback((p: FrameProblem, message: string) => { setProblem((was) => was === "network" ? was : p); if (p === "broken") setBroke((was) => was || message); }, []);
+  /* A part still being written may not run yet: only the finished version counts as broken, and only what it says. */
+  useEffect(() => { setProblem((was) => was === "network" ? was : null); setBroke(""); }, [writing, content]);
+  const broken = problem === "broken" && !writing;
+  const [fixing, setFixing] = useState<"asked" | "failed" | null>(null);
+  const fix = () => {
+    setFixing("asked");
+    code.ask(shared.workspaceId, `The ${animated ? "animation" : "artifact"} "${title}" broke when it opened. It said: ${broke || "an error, with no message"}\n\nFix it.`, [], effortNow()).catch(() => setFixing("failed"));
+  };
+  const failing = broken || problem === "network" || (!drawn && stuck);
   useEffect(() => {
     const down = () => setOffline(true);
     const up = () => { setOffline(false); if (failing) retry(); };
@@ -2999,12 +3009,12 @@ function ArtifactCard({ name, mode = "inline" }: { name: string; mode?: "inline"
       ? <button type="button" className="cd-artifact-away" onClick={() => shared.setBeside(null)}>Open beside the chat · bring it back here</button>
       : ready
         ? <>
-            <div className={cx("cd-artifact-body", dragging && "is-dragging", (!drawn || problem === "network") && "is-waiting")} style={shown ? { height: shown } : undefined} hidden={shut}>
+            <div className={cx("cd-artifact-body", dragging && "is-dragging", (!drawn || problem === "network" || broken) && "is-waiting")} style={shown ? { height: shown } : undefined} hidden={shut}>
               <ArtifactFrame key={tries} content={content} final={!writing} title={title} media={media} control={control} onHeight={onHeight} onScene={setScene} onDrawn={onDrawn} onProblem={onProblem} />
               {!failing ? drawn ? null : <div className="cd-artifact-wait"><LoadingIndicator label="Opening" className="cd-wait" /></div>
                 : offline ? <div className="cd-artifact-wait"><span>You&rsquo;re offline. It&rsquo;ll show once you&rsquo;re back.</span></div>
                 : problem === "network" ? <div className="cd-artifact-wait"><span>Your connection dropped part of this {animated ? "animation" : "artifact"}.</span><button type="button" className="cd-textbutton" onClick={retry}>Try again</button></div>
-                : problem === "broken" ? <div className="cd-artifact-wait"><span>Something in this {animated ? "animation" : "artifact"} broke. Ask Kimono to fix it.</span></div>
+                : broken ? <div className="cd-artifact-wait"><span>This {animated ? "animation" : "artifact"} broke{fixing === "asked" ? ". Kimono is fixing it." : fixing === "failed" ? " and couldn’t be sent for a fix." : "."}</span>{owns && !guest && fixing !== "asked" ? <button type="button" className="cd-textbutton" onClick={fix}>Fix it</button> : null}</div>
                 : <div className="cd-artifact-wait"><LoadingIndicator label="Opening" className="cd-wait" /><span>Still loading. Your connection is slow.</span><button type="button" className="cd-textbutton" onClick={retry}>Start over</button></div>}
             </div>
             {inline && !shut ? <div className="cd-artifact-grip" role="separator" aria-orientation="horizontal" aria-label="Resize" title="Drag to resize · double-click to fit" tabIndex={0}
