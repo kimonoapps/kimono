@@ -1,0 +1,116 @@
+/* ─────────────────────────────────────────────────────────────
+   部 The shared parts (parts.tsx): the way back, a section's heading,
+   a sideways row, a toast, a search field, an empty page.
+   One of each, so every app draws them the same.
+   ───────────────────────────────────────────────────────────── */
+
+/* The page header's way back sits before the title, on its baseline row. */
+.k-page-header.k-has-back { align-items: center; justify-content: flex-start; }
+.k-page-header.k-has-back .k-page-header-actions { margin-left: auto; }
+.k-page-header-back { flex: none; }
+
+.k-chev { width: 22px; height: 22px; display: block; }
+
+/* 戻 The way back: 44px round, a chevron, the container's tone. */
+.k-back {
+  flex: none; display: inline-grid; place-items: center;
+  width: 44px; height: 44px; padding: 0; border: 0; border-radius: var(--k-r-full);
+  background: var(--k-container-high); color: var(--k-on-surface); cursor: pointer;
+  transition: background var(--k-t-state), transform var(--k-t-tap);
+}
+.k-back:hover { background: var(--k-container-highest); }
+.k-back:active { transform: scale(.94); }
+.k-back:focus-visible { outline: 2px solid var(--k-suo); outline-offset: 2px; }
+
+/* 節 A section's heading: headline Mincho 22/27, a quiet count, "See all" on the right. */
+.k-section-header {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--k-space-4);
+  margin: 0 0 var(--k-space-3);
+}
+.k-section-header > h2 {
+  min-width: 0; margin: 0; display: flex; align-items: baseline; gap: var(--k-space-2);
+  font: 600 22px/27px var(--k-display); letter-spacing: -.005em; color: var(--k-plum);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.k-section-count { font: 500 14px/20px var(--k-sans); color: var(--k-faint); letter-spacing: 0; }
+.k-section-actions { flex: none; display: flex; align-items: center; gap: var(--k-space-3); }
+.k-see-all {
+  border: 0; background: none; padding: var(--k-space-2) 0; cursor: pointer;
+  font: 700 14px/20px var(--k-sans); color: var(--k-accent-deep, var(--k-suo-deep)); text-decoration: none;
+  text-underline-offset: 4px;
+}
+.k-see-all:hover { text-decoration: underline; }
+@media (max-width: 720px) { .k-section-header > h2 { font-size: 20px; line-height: 25px; } }
+
+/* 巻 A sideways row: snaps per item, arrows on a pointer screen at whichever end has more. */
+.k-carousel { position: relative; min-width: 0; --k-carousel-pad: 0px; --k-carousel-arrow-top: 50%; }
+.k-carousel-rail {
+  display: flex; gap: var(--k-space-3); overflow-x: auto; overflow-y: hidden;
+  scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none;
+  padding-inline: var(--k-carousel-pad); scroll-padding-inline: var(--k-carousel-pad);
+  padding-block: 4px;
+}
+.k-carousel-rail::-webkit-scrollbar { display: none; }
+.k-carousel-rail > * { flex: none; scroll-snap-align: start; }
+.k-carousel-arrow {
+  position: absolute; z-index: 3; top: var(--k-carousel-arrow-top); transform: translateY(-50%);
+  width: 40px; height: 40px; padding: 0; border: 0; border-radius: var(--k-r-full);
+  display: grid; place-items: center; cursor: pointer;
+  background: color-mix(in srgb, var(--k-container-highest) 88%, transparent); color: var(--k-on-surface);
+  box-shadow: var(--k-shadow-raised);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  transition: background var(--k-t-state), transform var(--k-t-tap);
+}
+.k-carousel-arrow:hover { background: var(--k-container-highest); }
+.k-carousel-arrow:active { transform: translateY(-50%) scale(.94); }
+.k-carousel-arrow:focus-visible { outline: 2px solid var(--k-suo); outline-offset: 2px; }
+.k-carousel-arrow.k-l { left: max(4px, calc(var(--k-carousel-pad) - 20px)); }
+.k-carousel-arrow.k-r { right: max(4px, calc(var(--k-carousel-pad) - 20px)); }
+@media (hover: none) { .k-carousel-arrow { display: none; } }
+
+/* 便り A word along the bottom: inverse ink, above any bottom bar. */
+.k-toast {
+  position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 88px); z-index: 1000;
+  display: flex; align-items: center; gap: var(--k-space-4);
+  max-width: min(560px, calc(100vw - 32px)); padding: 12px 18px; border-radius: var(--k-r-m);
+  background: var(--k-on-surface); color: var(--k-surface); box-shadow: var(--k-shadow-raised);
+  font: 600 14px/20px var(--k-sans);
+  opacity: 0; transform: translate(-50%, 16px); pointer-events: none;
+  transition: opacity var(--k-t-state), transform var(--k-t-seat) var(--k-spring);
+}
+.k-toast.k-on { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+.k-toast > span { min-width: 0; }
+.k-toast > button {
+  flex: none; border: 0; background: none; padding: 4px 0; cursor: pointer;
+  font: 700 14px/20px var(--k-sans); color: var(--k-sakura-soft);
+}
+@media (prefers-reduced-motion: reduce) { .k-toast { transition: opacity var(--k-t-state); transform: translate(-50%, 0); } }
+
+/* 探 A search field: 48px, the container's tone, a glass and a clear. */
+.k-search {
+  display: flex; align-items: center; gap: var(--k-space-2);
+  height: var(--k-control); padding: 0 var(--k-space-2) 0 var(--k-space-4); border-radius: var(--k-r-m);
+  background: var(--k-container-high); color: var(--k-on-surface-variant);
+  border: var(--k-hairline) solid transparent; transition: border-color var(--k-t-state), background var(--k-t-state);
+  cursor: text;
+}
+.k-search:focus-within { border-color: var(--k-suo); background: var(--k-container-highest); }
+.k-search > svg { width: 20px; height: 20px; flex: none; }
+.k-search > input {
+  flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: none; padding: 0;
+  font: 16px/24px var(--k-sans); color: var(--k-on-surface);
+}
+.k-search > input::placeholder { color: var(--k-faint); }
+.k-search > input::-webkit-search-cancel-button { display: none; }
+.k-search-clear {
+  flex: none; width: 36px; height: 36px; display: grid; place-items: center; border: 0; border-radius: var(--k-r-full);
+  background: none; color: inherit; cursor: pointer;
+}
+.k-search-clear:hover { background: var(--k-hover); }
+.k-search-clear > svg { width: 18px; height: 18px; }
+
+/* 空 Nothing here yet: a Mincho line, a sentence, one thing to do. */
+.k-empty { display: grid; justify-items: center; gap: var(--k-space-2); padding: var(--k-space-7) var(--k-space-4); text-align: center; }
+.k-empty-title { margin: 0; font: 600 22px/27px var(--k-display); color: var(--k-plum); }
+.k-empty-body { margin: 0; max-width: 44ch; font: 16px/24px var(--k-sans); color: var(--k-on-surface-variant); }
+.k-empty-action { margin-top: var(--k-space-3); }

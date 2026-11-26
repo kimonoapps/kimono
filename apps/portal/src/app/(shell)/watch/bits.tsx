@@ -5,6 +5,7 @@ import { useTabTitle as useSharedTabTitle } from "@/components/tab-title";
 import type { Card, Prefs, Rating, TitleView } from "./api";
 import { AppIcon } from "@/components/icons";
 import { Icon } from "./icons";
+import { Carousel, Toast as KataToast } from "@kimono/ui";
 import { LoadingIndicator } from "@/components/loading-indicator";
 
 export const cx = (...names: (string | false | null | undefined)[]) => names.filter(Boolean).join(" ");
@@ -137,25 +138,13 @@ export function SkeletonRows({ count = 4 }: { count?: number }) {
   </section>)}</>;
 }
 
+/** A word along the bottom: Kata's toast. */
 export function Toast({ message }: { message: { text: string; at: number } | null }) {
-  const [gone, setGone] = useState<number | null>(null);
-  useEffect(() => {
-    if (!message) return;
-    const t = setTimeout(() => setGone(message.at), 1800);
-    return () => clearTimeout(t);
-  }, [message]);
-  const on = Boolean(message && gone !== message.at);
-  return <div className={cx("kw-toast", on && "kw-on")} role="status" aria-live="polite">{message?.text}</div>;
+  return <KataToast toast={message} />;
 }
 
 export function Rail({ children, label }: { children: ReactNode; label: string }) {
-  const rail = useRef<HTMLDivElement>(null);
-  const by = (sign: number) => rail.current?.scrollBy({ left: sign * rail.current.clientWidth * 0.85, behavior: "smooth" });
-  return <div className="kw-rail-wrap">
-    <button className="kw-arrow kw-l" aria-label="Scroll left" onClick={() => by(-1)}><Icon name="left" /></button>
-    <div className="kw-rail" ref={rail} aria-label={label}>{children}</div>
-    <button className="kw-arrow kw-r" aria-label="Scroll right" onClick={() => by(1)}><Icon name="right" /></button>
-  </div>;
+  return <Carousel label={label} className="kw-rail">{children}</Carousel>;
 }
 
 /* ───── Brand: Watch's bloom ───── */
@@ -179,7 +168,6 @@ export function Spinner({ color, label = "Loading", className }: { color?: strin
 
 /* ───── Faces ───── */
 
-const faces = ["#7E3448", "#3E5236", "#5B3F45", "#8A5A2B", "#3F4A5B", "#5A4A2B"];
-/** Each person's own colour behind their initial. */
-export const faceOf = (username: string) => faces[[...username].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % faces.length];
+/** Each person's own colour behind their initial: the same one Portrait uses everywhere. */
+export { tintOf as faceOf } from "@/components/portrait";
 export const initial = (p: { name: string; username: string }) => (p.name.trim() || p.username).charAt(0).toUpperCase();

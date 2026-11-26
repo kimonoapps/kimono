@@ -1,5 +1,6 @@
 "use client";
 
+import { Portrait } from "@/components/portrait";
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref as ReactRef } from "react";
 import { airText, clock, deviceOf, labelOf, languageName, longLabel, twoLetter, shownNumber, watchApi, type Episode, type FriendHere, type Play, type Ref, type TitleView, type Trickplay } from "./api";
 import { alike, cx, Img, Spinner, TitleMark, useTabTitle, useWatch } from "./bits";
@@ -1097,16 +1098,9 @@ function EpisodeList({ friends, episodes, ep, bySeason, season, continuous, prog
 
 /* ───── Watching together: faces, the wait, the party's sheet, and chat ───── */
 
-const faces = ["#7E3448", "#3E5236", "#5B3F45", "#8A5A2B", "#3F4A5B", "#5A4A2B"];
-const faceOf = (username: string) => faces[[...username].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % faces.length];
-
 function Face({ person, state }: { person: Person; state?: "loading" | "ready" | "buffering" }) {
   const label = `${person.name}${state === "buffering" ? " (buffering)" : state === "loading" ? " (getting ready)" : ""}`;
-  return <span className={cx("kw-face-s", state && state !== "ready" && "kw-wait-ring")} style={{ background: faceOf(person.username) }} title={label}>
-    {person.picture
-      // eslint-disable-next-line @next/next/no-img-element -- the Portal's own portrait
-      ? <img src={person.picture} alt="" /> : (person.name.trim() || person.username).charAt(0).toUpperCase()}
-  </span>;
+  return <Portrait name={person.name} username={person.username} picture={person.picture} tint title={label} className={cx("kw-face-s", state && state !== "ready" && "kw-wait-ring")} />;
 }
 
 /** "Waiting for Sami…": who the party is holding for, and a way to go on without them. */

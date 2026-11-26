@@ -30,6 +30,7 @@ export * from "./rows";
 export * from "./form";
 export * from "./choice";
 export * from "./page";
+export * from "./parts";
 
 /* Crossings — the press is the page change. */
 export * from "./crossing";

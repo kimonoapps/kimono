@@ -283,6 +283,24 @@ where it carries a consequence, and a word always sits beside it: running is
 the tertiary container, wants is suō, a 4xx is the primary container, and a 5xx
 is urushi.
 
+## The shared parts
+
+An app never draws its own version of these (`parts.tsx`, `page.tsx`):
+
+| Part | What it is |
+| --- | --- |
+| `PageHeader` | The page's title in Mincho, a sentence, actions on the right; `back` puts the way back before the title. |
+| `BackButton` / `.k-back` | The way back: 44px round, a chevron. A link that goes back takes the class and `<BackGlyph />`. |
+| `SectionHeader` | Above every row or list: headline Mincho 22/27, a quiet count, and "See all". Never "Show all". |
+| `Carousel` | Any row that scrolls sideways. Snaps per item; round arrows on a pointer screen, only at an end with more beyond it. `--k-carousel-pad` sets a gutter, `--k-carousel-arrow-top` centres the arrows on the pictures. |
+| `Toast` / `useToast` | A word along the bottom, in inverse ink: 3.2s, or 6s when it offers something to press. |
+| `SearchField` | A 48px field with a glass and ×. |
+| `EmptyState` | Nothing here yet: a Mincho line, a sentence, at most one thing to do. |
+| `Portrait` (portal) | Every face. `tint` sets the initial on the person's own colour where many faces sit together. |
+
+A place that is always dark whatever the house is (Watch) adds `.k-night`, and
+gets the night values of every role.
+
 ## Ink and wash
 
 Kimono's marks are drawn by hand (`ink.ts`, `ink-marks.tsx`): a wobbly plum

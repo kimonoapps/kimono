@@ -1,5 +1,6 @@
 "use client";
 
+import { PageHeader } from "@kimono/ui";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { deviceOf, languageName, languages, qualities, saveQuality, savedQuality, watchApi, type Prefs } from "./api";
 import { Crossing } from "@/components/crossing";
@@ -57,7 +58,7 @@ export function SettingsPage({ me, onSwitch, signOut }: { me: Person; onSwitch: 
   const current = groups.find((g) => g.id === shown);
 
   return <main className="kw-page kw-settings" data-open={open ? "" : undefined}>
-    <h1>Settings</h1>
+    <PageHeader title="Settings" />
     {!prefs ? <div className="kw-set-wait">{Array.from({ length: 6 }, (_, i) => <div key={i} className="kw-sk kw-sk-line" style={{ height: 44 }} />)}</div> : <div className="kw-set-split">
       <nav className="kw-set-nav" aria-label="Settings">
         <div className="kw-set-me">

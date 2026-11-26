@@ -1,5 +1,6 @@
 "use client";
 
+import { EmptyState, PageHeader } from "@kimono/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { airText, watchApi, type Card, type TitleView } from "./api";
 import { cx, Img, TitleMark, useWatch } from "./bits";
@@ -45,7 +46,7 @@ export function HotPage({ ids }: { ids: string[] | null }) {
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return <main className="kw-page">
-    <h1>Coming soon</h1>
+    <PageHeader title="Coming soon" />
     {!soon ? <div className="kw-soon">{Array.from({ length: 2 }, (_, i) => <div key={i} style={{ display: "grid", gap: 10 }}>
       <div className="kw-sk" style={{ aspectRatio: "16/9" }} /><div className="kw-sk kw-sk-line" style={{ width: "50%" }} /><div className="kw-sk kw-sk-line" />
     </div>)}</div>
@@ -76,10 +77,10 @@ export function HotPage({ ids }: { ids: string[] | null }) {
 
 export function ListPage({ cards }: { cards: Card[] | null }) {
   return <main className="kw-page">
-    <h1>My list</h1>
+    <PageHeader title="My list" />
     {!cards ? <div className="kw-grid">{Array.from({ length: 6 }, (_, i) => <div key={i} className="kw-sk" style={{ aspectRatio: "2/3" }} />)}</div>
       : cards.length ? <div className="kw-grid">{cards.map((c) => <PosterCard key={c.id} card={c} poster />)}</div>
-        : <p className="kw-empty">Titles you add show up here.</p>}
+        : <EmptyState title="Your list is empty">Titles you add show up here.</EmptyState>}
   </main>;
 }
 

@@ -7,11 +7,12 @@
  */
 .kw{
   color-scheme: dark;
-  --bg:#110C0A; --surface:#1B1412; --surface-2:#261E1B; --surface-3:#312825; --line:#3C3330;
-  --fg:#EFE0DA; --fg-2:#D8C2BD; --fg-3:#A08C88;
-  --suo:#D06A82; --suo-deep:#7E3448; --blush:#E2A0A8; --moss:#BFD0AE; --paper:#F4E9E1; --ink:#1B1412;
-  --display:"Shippori Mincho","Shippori Mincho Kimono","Hiragino Mincho ProN","Yu Mincho",Georgia,serif;
-  --ui:"Zen Maru Gothic Kimono","Zen Maru Gothic","Hiragino Maru Gothic ProN",system-ui,sans-serif;
+  /* Kata's night (the .k-night class beside .kw), named the way this sheet reads it. */
+  --bg:var(--k-container-lowest); --surface:var(--k-surface); --surface-2:var(--k-container); --surface-3:var(--k-container-high); --line:var(--k-container-highest);
+  --fg:var(--k-on-surface); --fg-2:var(--k-on-surface-variant); --fg-3:var(--k-faint);
+  --suo:var(--k-suo); --suo-deep:var(--k-primary-container); --blush:#E2A0A8; --moss:var(--k-moss-deep); --paper:#F4E9E1; --ink:#1B1412;
+  --display:var(--k-display);
+  --ui:var(--k-sans);
   --gutter-l:max(16px, env(safe-area-inset-left, 0px)); --gutter-r:max(16px, env(safe-area-inset-right, 0px));
   --ease:cubic-bezier(.2,.8,.2,1); --spring:cubic-bezier(.34,1.4,.5,1);
   position:fixed; inset:0; z-index:45; overflow-y:auto; overflow-x:hidden; overscroll-behavior:contain;
@@ -26,7 +27,8 @@
 .kw [hidden]{display:none!important}
 .kw *,.kw *::before,.kw *::after{box-sizing:border-box}
 .kw h1,.kw h2,.kw h3,.kw h4{color:inherit;letter-spacing:normal}
-.kw button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cursor:pointer;-webkit-tap-highlight-color:transparent;text-align:inherit;box-shadow:none;min-height:0}
+/* Kata's own parts (class k-…) keep their look; everything else starts bare. */
+.kw button:where(:not([class^="k-"]):not([class*=" k-"])){font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cursor:pointer;-webkit-tap-highlight-color:transparent;text-align:inherit;box-shadow:none;min-height:0}
 .kw button:focus-visible,.kw a:focus-visible,.kw input:focus-visible,.kw select:focus-visible{outline:2px solid var(--blush);outline-offset:2px;border-radius:6px}
 .kw a{color:inherit;text-decoration:none}
 .kw svg{display:block}
@@ -82,6 +84,9 @@
 .kw .kw-logo{font-family:var(--display);font-weight:800;line-height:.95;letter-spacing:.01em;text-wrap:balance;text-shadow:0 2px 24px rgba(0,0,0,.45)}
 .kw .kw-hero .kw-logo{font-size:clamp(46px,8vw,92px);transform-origin:left bottom;transition:transform 1.2s var(--ease)}
 .kw .kw-hero.kw-playing .kw-logo{transform:scale(.72)}
+/* A title without a logo is set in Mincho: kept to three balanced lines so a long name never climbs under the top bar. */
+.kw .kw-hero .kw-logo:not(:has(img)){font-size:clamp(40px,4.6vw,72px);line-height:1.02;text-wrap:balance;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;max-width:min(720px,60vw)}
+.kw .kw-hero .kw-hero-body:has(.kw-logo:not(:has(img))){max-width:min(720px,60vw)}
 .kw .kw-hero .kw-tagline{font-size:15px;color:var(--fg-2);max-width:46ch;line-height:1.55;transition:opacity .8s,max-height .8s;max-height:120px;overflow:hidden}
 .kw .kw-hero.kw-playing .kw-tagline{opacity:0;max-height:0}
 .kw .kw-rank{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:700}
@@ -122,15 +127,10 @@
 /* ───── Rows ───── */
 .kw .kw-rows{position:relative;z-index:2;display:grid;grid-template-columns:minmax(0,1fr);gap:clamp(22px,3vw,40px);padding-bottom:calc(env(safe-area-inset-bottom,0px) + 96px)}
 @media (min-width:900px){.kw .kw-rows{margin-top:-90px;padding-bottom:64px}}
-.kw .kw-row h2{font-size:clamp(17px,1.6vw,21px);font-weight:700;margin:0 0 10px;padding-left:var(--gutter-l);padding-right:var(--gutter-r)}
-.kw .kw-rail-wrap{position:relative}
-.kw .kw-rail{display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;scroll-padding-left:var(--gutter-l);padding-left:var(--gutter-l);padding-right:var(--gutter-r);padding-block:4px;scrollbar-width:none}
-.kw .kw-rail::-webkit-scrollbar{display:none}
-.kw .kw-rail>*{scroll-snap-align:start;flex:none}
-.kw .kw-arrow{position:absolute;top:0;bottom:0;width:var(--gutter-l);min-width:40px;display:none;place-items:center;background:rgba(17,12,10,.55);opacity:0;transition:opacity .2s;z-index:3}
-.kw .kw-arrow.kw-r{right:0}
-.kw .kw-arrow.kw-l{left:0}
-@media (hover:hover) and (min-width:900px){.kw .kw-arrow{display:grid}.kw .kw-rail-wrap:hover .kw-arrow{opacity:1}}
+.kw .kw-row > .k-section-header{padding-left:var(--gutter-l);padding-right:var(--gutter-r);margin-bottom:10px}
+/* A row of cards: Kata's Carousel, in the page's gutters, the arrows centred on the art. */
+.kw .kw-rail{--k-carousel-pad:var(--gutter-l)}
+.kw .kw-rail .k-carousel-rail{gap:8px;padding-right:var(--gutter-r)}
 .kw .kw-card{position:relative;width:clamp(150px,19vw,290px);aspect-ratio:16/9;border-radius:8px;overflow:hidden;background:var(--surface-2);text-align:left}
 .kw .kw-card img{width:100%;height:100%;object-fit:cover;transition:transform .4s var(--ease)}
 .kw .kw-card .kw-t{position:absolute;left:10px;right:10px;bottom:8px;font-family:var(--display);font-weight:800;font-size:clamp(15px,1.4vw,20px);line-height:1;text-shadow:0 1px 10px rgba(0,0,0,.8)}
@@ -163,7 +163,7 @@
 
 .kw .kw-t10{display:flex;align-items:flex-end;width:auto}
 /* Room for the numerals, which reach past their line box: the rail never scrolls up and down. */
-.kw .kw-rail:has(.kw-t10){padding-block:24px}
+.kw .kw-rail:has(.kw-t10) .k-carousel-rail{padding-block:24px}
 .kw .kw-t10 .kw-n{font-family:var(--display);font-weight:800;font-size:clamp(120px,13vw,190px);line-height:.72;color:var(--bg);-webkit-text-stroke:3px var(--fg-3);letter-spacing:-.08em;margin-right:-.12em;user-select:none}
 .kw .kw-t10 .kw-card{aspect-ratio:2/3;width:clamp(96px,9vw,140px)}
 .kw .kw-t10 .kw-card .kw-t{display:none}
@@ -193,7 +193,8 @@
 
 /* pages */
 .kw .kw-page{padding-top:calc(env(safe-area-inset-top,0px) + 76px);padding-bottom:calc(env(safe-area-inset-bottom,0px) + 100px);padding-left:var(--gutter-l);padding-right:var(--gutter-r)}
-.kw .kw-page h1{font-family:var(--display);font-weight:800;font-size:clamp(26px,3vw,36px);margin:12px 0 18px}
+/* Page titles are Kata's PageHeader, tucked under the top bar. */
+.kw .kw-page > .k-page-header{padding:12px 0 18px}
 .kw .kw-soon{display:grid;gap:34px;max-width:900px}
 .kw .kw-soon article{display:grid;grid-template-columns:52px 1fr;gap:12px}
 .kw .kw-soon .kw-date{text-align:center;color:var(--fg-3);font-size:12px;letter-spacing:.08em;padding-top:4px}
@@ -508,8 +509,6 @@
 .kw .kw-slist img{width:100%;aspect-ratio:16/9;object-fit:cover}
 .kw .kw-slist .kw-pl{width:40px;height:40px;border-radius:50%;border:1.5px solid var(--fg-2);display:grid;place-items:center;margin-right:12px}
 
-.kw .kw-toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 90px);z-index:100;transform:translate(-50%,20px);background:var(--paper);color:var(--ink);font-weight:700;font-size:14px;padding:10px 18px;border-radius:10px;opacity:0;transition:opacity .2s,transform .35s var(--spring);pointer-events:none;white-space:nowrap}
-.kw .kw-toast.kw-on{opacity:1;transform:translate(-50%,0)}
 .kw .kw-credit{color:var(--fg-3);font-size:12px;padding-left:var(--gutter-l);padding-right:var(--gutter-r);padding-bottom:calc(env(safe-area-inset-bottom,0px) + 90px)}
 @media (min-width:900px){.kw .kw-credit{padding-bottom:32px;margin-top:-30px}}
 /* ───── Loading (pretend and real) ───── */
@@ -876,15 +875,13 @@
 
 /* ───── Friends (friends.tsx) ───── */
 .kw .kw-friends{max-width:1080px}
-.kw .kw-fr-head{display:flex;align-items:center;gap:16px;margin-bottom:18px}
-.kw .kw-fr-head h1{margin:0;flex:1}
 .kw .kw-invis{height:38px;padding:0 14px;font-size:14px}
-.kw .kw-friends h2{font-size:15px;color:var(--fg-2);margin:28px 0 10px}
+.kw .kw-friends section > .k-section-header{margin:28px 0 10px}
 .kw .kw-fr-list{display:grid;gap:12px}
 .kw .kw-fr-person{display:flex;align-items:center;gap:12px;padding:8px 0}
 .kw .kw-fr-find{position:static;margin:4px 0 8px;max-width:420px}
-.kw .kw-taste .kw-fr-head{justify-content:flex-start;gap:12px}
-.kw .kw-taste .kw-fr-head .kw-face-s{width:40px;height:40px;font-size:18px;border-radius:50%}
+.kw .kw-taste-who{display:inline-flex;align-items:center;gap:12px}
+.kw .kw-taste-who .kw-face-s{width:40px;height:40px;font-size:18px;border-radius:50%}
 .kw .kw-taste .kw-row{margin:0 calc(-1 * var(--gutter-l)) 18px calc(-1 * var(--gutter-l))}
 .kw .kw-fr-thought{display:flex;align-items:center;gap:10px;color:var(--fg-2);font-size:14px;margin:10px 0}
 .kw .kw-fr-faces{display:flex}
@@ -910,21 +907,14 @@
 .kw .kw-fr-now > span:last-child{display:grid;gap:2px;min-width:0;padding-right:12px}
 .kw .kw-fr-now b{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .kw .kw-fr-now small{font-size:13px;color:var(--fg-2)}
-.kw .kw-fr-rwrap{position:relative;min-width:0}
-.kw .kw-fr-recent{display:flex;gap:10px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px;scroll-snap-type:x proximity;overscroll-behavior-x:contain}
-.kw .kw-fr-recent::-webkit-scrollbar{display:none}
-.kw .kw-fr-recent > button{scroll-snap-align:start}
-.kw .kw-fr-arrow{position:absolute;top:calc(176px * 9 / 32 - 18px);z-index:3;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:rgba(17,12,10,.82);color:#f3e7e2;box-shadow:0 2px 10px rgba(0,0,0,.45);transition:background .15s,transform .15s}
-.kw .kw-fr-arrow:hover{background:rgba(40,30,28,.95);transform:scale(1.06)}
-.kw .kw-fr-arrow.kw-l{left:-6px}.kw .kw-fr-arrow.kw-r{right:-6px}
-.kw .kw-fr-arrow svg{width:20px;height:20px}
-@media (hover:none){.kw .kw-fr-arrow{display:none}}
-.kw .kw-fr-recent > button{flex:0 0 176px;display:grid;gap:3px;text-align:left;min-width:0}
+.kw .kw-fr-recent{--k-carousel-arrow-top:calc(176px * 9 / 32 + 4px)}
+.kw .kw-fr-recent .k-carousel-rail{padding-bottom:2px}
+.kw .kw-fr-recent .k-carousel-rail > button{flex:0 0 176px;display:grid;gap:3px;text-align:left;min-width:0}
 .kw .kw-fr-recent b{margin-top:5px;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .kw .kw-fr-recent small{font-size:12px;color:var(--fg-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .kw .kw-fr-shot{position:relative;display:block;aspect-ratio:16/9;border-radius:8px;overflow:hidden;background:var(--surface-3)}
 .kw .kw-fr-shot img{width:100%;height:100%;object-fit:cover;transition:transform .4s var(--ease)}
-.kw .kw-fr-recent > button:hover .kw-fr-shot img{transform:scale(1.04)}
+.kw .kw-fr-recent .k-carousel-rail > button:hover .kw-fr-shot img{transform:scale(1.04)}
 .kw .kw-fr-shot .kw-bar,.kw .kw-fr-now .kw-bar{position:absolute;left:8px;right:8px;bottom:6px;width:auto}
 .kw .kw-fr-here{display:grid;gap:8px}
 .kw .kw-fr-here > div{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--fg-2)}
@@ -941,12 +931,8 @@
 .kw .kw-ask{animation-name:kw-ask-in}
 @media (max-width:520px){.kw .kw-fr-top{flex-wrap:wrap}.kw .kw-fr-top .kw-btn{order:3;flex:1;justify-content:center}}
 /* Friends on Home: round faces in a row */
-.kw .kw-frrow h2{display:flex;align-items:baseline;gap:6px}
-.kw .kw-fr-count{font-weight:400;color:var(--fg-3)}
-.kw .kw-fr-hide{margin-left:auto;font-size:14px;font-weight:400;color:var(--fg-3);padding:0 10px}
+.kw .kw-fr-hide{font-size:14px;font-weight:600;color:var(--fg-3);padding:8px 0}
 .kw .kw-fr-hide:hover{color:var(--fg)}
-.kw .kw-fr-all{font-size:14px;font-weight:400;color:var(--fg-2);padding-right:var(--gutter-r)}
-.kw .kw-fr-all:hover{color:var(--fg)}
 .kw .kw-frt{width:96px;display:grid;justify-items:center;gap:2px;padding:4px 0;text-align:center}
 .kw .kw-frt-ring{position:relative;display:grid;place-items:center;width:84px;height:84px;border-radius:50%;padding:4px;box-shadow:inset 0 0 0 2px transparent;transition:transform .2s var(--spring),box-shadow .2s}
 .kw .kw-frt .kw-face-s{width:100%;height:100%;font-size:32px}

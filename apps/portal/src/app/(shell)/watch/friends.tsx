@@ -1,10 +1,11 @@
 "use client";
 
-import { InkMeter } from "@kimono/ui";
+import { Carousel, InkMeter, SectionHeader, SearchField, EmptyState, PageHeader, BackButton } from "@kimono/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { friendsApi, type Card, type Friend, type FriendHere, type FriendRated, type FriendsPage as Page, type FriendTaste, type JoinAsk, type Person } from "./api";
-import { cx, faceOf, Img, initial, Rail, useWatch } from "./bits";
+import { cx, Img, Rail, useWatch } from "./bits";
+import { Portrait } from "@/components/portrait";
 import { PosterCard } from "./home";
 import { Icon } from "./icons";
 import { screenId, together } from "./party";
@@ -16,11 +17,7 @@ import { screenId, together } from "./party";
  */
 
 export function Face({ person, className }: { person: Person; className?: string }) {
-  return <span className={cx("kw-face-s", className)} style={{ background: faceOf(person.username) }}>
-    {person.picture
-      // eslint-disable-next-line @next/next/no-img-element -- the Portal's own portrait
-      ? <img src={person.picture} alt="" /> : initial(person)}
-  </span>;
+  return <Portrait name={person.name} username={person.username} picture={person.picture} tint className={cx("kw-face-s", className)} />;
 }
 
 export function ago(at: number) {
@@ -89,10 +86,10 @@ export function FriendsPage({ onJoin }: { onJoin: (partyId: string) => void }) {
   if (taste) return <TastePage person={taste} onBack={() => setTaste(null)} />;
 
   return <main className="kw-page kw-friends">
-    <div className="kw-fr-head"><h1>Friends</h1><InvisibleButton /></div>
+    <PageHeader title="Friends"><InvisibleButton /></PageHeader>
     {!page ? (problem ? <p className="kw-empty">{problem}</p> : <div className="kw-fr-list">{Array.from({ length: 3 }, (_, i) => <div key={i} className="kw-sk" style={{ height: 120, borderRadius: 14 }} />)}</div>)
       : <>
-        {page.asked.length ? <section><h2>Asked to be friends</h2>{page.asked.map((p) => <div key={p.username} className="kw-fr-person">
+        {page.asked.length ? <section><SectionHeader title="Asked to be friends" />{page.asked.map((p) => <div key={p.username} className="kw-fr-person">
           <Face person={p} /><b>{p.name || p.username}</b>
           <button className="kw-btn kw-tonal" onClick={() => void change("no", p.username)}>Not now</button>
           <button className="kw-btn kw-primary" onClick={() => void change("yes", p.username)}><Icon name="check" />Accept</button>
@@ -100,9 +97,9 @@ export function FriendsPage({ onJoin }: { onJoin: (partyId: string) => void }) {
         <div className="kw-fr-list">
           {page.friends.length ? page.friends.map((f) => <FriendCard key={f.username} f={f} asking={asking?.to === f.username ? asking : null} onAsk={() => void ask(f)} onCancel={cancel} onTaste={() => setTaste(f)}
             onRemove={() => { if (confirm(`Remove ${f.name || f.username}? You'll stop seeing what each other watches.`)) void change("remove", f.username); }} />)
-            : <p className="kw-empty">Add friends to see what they&rsquo;re watching.</p>}
+            : <EmptyState title="No friends yet">Add friends to see what they&rsquo;re watching.</EmptyState>}
         </div>
-        <section><h2>Add friends</h2>
+        <section><SectionHeader title="Add friends" />
           <FindPeople onAdd={(username) => change("ask", username)} />
           {page.asking.map((p) => <div key={p.username} className="kw-fr-person"><Face person={p} /><b>{p.name || p.username}</b>
             <button className="kw-btn kw-tonal" onClick={() => void change("remove", p.username)}><Icon name="check" />Asked</button></div>)}
@@ -120,13 +117,12 @@ function TastePage({ person, onBack }: { person: Person; onBack: () => void }) {
   const rows: [string, Card[]][] = taste ? [["Loved", taste.loved], ["Liked", taste.liked], ["On their list", taste.list], ["Didn't like", taste.disliked]] : [];
   const shown = rows.filter(([, cards]) => cards.length);
   return <main className="kw-page kw-friends kw-taste">
-    <div className="kw-fr-head"><button className="kw-iconbtn" aria-label="Back to Friends" onClick={onBack}><Icon name="left" /></button>
-      <Face person={person} /><h1>{person.name || person.username}</h1></div>
+    <PageHeader back={<BackButton label="Back to Friends" onClick={onBack} />} title={<span className="kw-taste-who"><Face person={person} />{person.name || person.username}</span>} />
     {problem ? <p className="kw-empty">{problem}</p>
       : !taste ? <div className="kw-sk" style={{ height: 220, borderRadius: 14 }} />
       : !taste.sharing ? <p className="kw-empty">Keeps their list and ratings to themselves</p>
       : !shown.length ? <p className="kw-empty">Nothing rated yet</p>
-      : shown.map(([title, cards]) => <section key={title} className="kw-row"><h2>{title}</h2><Rail label={title}>{cards.map((card) => <PosterCard key={card.id} card={card} />)}</Rail></section>)}
+      : shown.map(([title, cards]) => <section key={title} className="kw-row"><SectionHeader title={title} /><Rail label={title}>{cards.map((card) => <PosterCard key={card.id} card={card} />)}</Rail></section>)}
   </main>;
 }
 
@@ -155,7 +151,7 @@ function FindPeople({ onAdd }: { onAdd: (username: string) => Promise<unknown> }
     return () => clearTimeout(timer);
   }, [q]);
   return <>
-    <div className="kw-sbar kw-fr-find"><Icon name="search" /><input type="search" placeholder="Search by name" aria-label="Search by name" autoComplete="off" value={q} onChange={(event) => setQ(event.target.value)} /></div>
+    <SearchField className="kw-fr-find" placeholder="Search by name" value={q} onChange={setQ} />
     {found?.map((p) => <div key={p.username} className="kw-fr-person"><Face person={p} /><b>{p.name || p.username}</b>
       <button className="kw-btn kw-tonal" onClick={() => void onAdd(p.username).then(() => setFound((now) => now?.filter((x) => x.username !== p.username) ?? null))}><Icon name="add" />Add</button></div>)}
     {found && !found.length ? <p className="kw-fr-none">No one called that</p> : null}
@@ -184,33 +180,14 @@ function FriendCard({ f, asking, onAsk, onCancel, onTaste, onRemove }: { f: Frie
   </article>;
 }
 
-/** What a friend watched lately: a still each, the show's name and episode under it; arrows scroll when it runs past the card. */
+/** What a friend watched lately: a still each, the show's name and episode under it. */
 function FriendRecents({ recent, name }: { recent: Friend["recent"]; name: string }) {
   const watch = useWatch();
-  const rail = useRef<HTMLDivElement>(null);
-  const [ends, setEnds] = useState({ l: false, r: false });
-  const measure = useCallback(() => {
-    const el = rail.current;
-    if (el) setEnds({ l: el.scrollLeft > 4, r: el.scrollLeft + el.clientWidth < el.scrollWidth - 4 });
-  }, []);
-  useEffect(() => {
-    measure();
-    const el = rail.current;
-    if (!el) return;
-    const seen = new ResizeObserver(measure);
-    seen.observe(el);
-    return () => seen.disconnect();
-  }, [measure, recent.length]);
-  const by = (sign: number) => rail.current?.scrollBy({ left: sign * rail.current.clientWidth * 0.8, behavior: "smooth" });
-  return <div className="kw-fr-rwrap">
-    {ends.l ? <button className="kw-fr-arrow kw-l" aria-label="Scroll left" onClick={() => by(-1)}><Icon name="left" /></button> : null}
-    <div className="kw-fr-recent" ref={rail} onScroll={measure} aria-label={`${name} watched`}>{recent.map((s) => <button key={s.title.id} aria-label={s.title.name} onClick={() => watch.openTitle(s.title.id)}>
-      <span className="kw-fr-shot"><Img src={s.title.backdrop ?? s.title.poster} />{!s.finished ? <InkMeter className="kw-bar" value={s.progress} label="Watched" /> : null}</span>
-      <b>{s.title.name}</b>
-      <small>{s.finished ? (s.label ? `${s.label} · done` : "Finished") : s.label ?? `${Math.round(s.progress * 100)}% in`}</small>
-    </button>)}</div>
-    {ends.r ? <button className="kw-fr-arrow kw-r" aria-label="Scroll right" onClick={() => by(1)}><Icon name="right" /></button> : null}
-  </div>;
+  return <Carousel label={`${name} watched`} className="kw-fr-recent" gap={10}>{recent.map((s) => <button key={s.title.id} aria-label={s.title.name} onClick={() => watch.openTitle(s.title.id)}>
+    <span className="kw-fr-shot"><Img src={s.title.backdrop ?? s.title.poster} />{!s.finished ? <InkMeter className="kw-bar" value={s.progress} label="Watched" /> : null}</span>
+    <b>{s.title.name}</b>
+    <small>{s.finished ? (s.label ? `${s.label} · done` : "Finished") : s.label ?? `${Math.round(s.progress * 100)}% in`}</small>
+  </button>)}</Carousel>;
 }
 
 /** Friends whose place is this episode (or film): their faces and "Sami is here". */
@@ -308,7 +285,9 @@ export function FriendsRow({ onJoin, onAll }: { onJoin: (partyId: string) => voi
   const now = f?.now, last = f?.recent[0];
   const mine = f && asking?.to === f.username ? asking : null;
   return <section className="kw-row kw-frrow">
-    <h2>Friends{friends.length ? <span className="kw-fr-count"> ({live ? `${live} watching` : friends.length})</span> : null}<button className="kw-fr-hide" onClick={() => void watch.updatePrefs({ friendsOnHome: false }).then((ok) => ok && watch.toast("Friends hidden from Home. Settings › Friends brings them back"))}>Hide</button><button className="kw-fr-all" onClick={onAll}>See all</button></h2>
+    <SectionHeader title="Friends" count={friends.length ? (live ? `${live} watching` : friends.length) : null} more={{ onClick: onAll }}>
+      <button className="kw-fr-hide" onClick={() => void watch.updatePrefs({ friendsOnHome: false }).then((ok) => ok && watch.toast("Friends hidden from Home. Settings › Friends brings them back"))}>Hide</button>
+    </SectionHeader>
     <Rail label="Friends">
       <button className="kw-frt kw-frt-add" onClick={onAll}><span className="kw-frt-ring"><Icon name="add" /></span><b>{friends.length ? "Add" : "Add friends"}</b></button>
       {friends.map((x) => <button key={x.username} className={cx("kw-frt", x.now && "kw-live")} aria-expanded={picked?.f.username === x.username}

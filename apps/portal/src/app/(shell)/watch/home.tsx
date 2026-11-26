@@ -1,6 +1,6 @@
 "use client";
 
-import { InkMeter } from "@kimono/ui";
+import { InkMeter, SectionHeader, EmptyState } from "@kimono/ui";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { labelOf, watchApi, minutesText, type Card, type ContinueCard, type FreshCard, type Home, type Rating, type Shelf, type TitleView } from "./api";
@@ -50,7 +50,7 @@ export function HomePage({ home, filter, setFilter, chipsAway, more, onMore, fri
     <div className="kw-rows">
       {friends}
       {!home ? <SkeletonRows count={4} /> : home.rows.map((row, i) => <section key={row.id} className="kw-row" style={{ animationDelay: `${i * 70}ms` }}>
-        <h2>{row.kind === "continue" ? `Continue watching for ${watch.firstName}` : row.title}</h2>
+        <SectionHeader title={row.kind === "continue" ? `Continue watching for ${watch.firstName}` : row.title} />
         <Rail label={row.title}>
           {row.items.map((card) => row.kind === "continue"
             ? <ContinueTile key={card.id} card={card as ContinueCard} />
@@ -61,7 +61,7 @@ export function HomePage({ home, filter, setFilter, chipsAway, more, onMore, fri
               : <PosterCard key={card.id} card={card} />)}
         </Rail>
       </section>)}
-      {home && !home.rows.length ? <p className="kw-empty" style={{ paddingInline: "var(--gutter-l)" }}>Nothing here yet.</p> : null}
+      {home && !home.rows.length ? <EmptyState title="Nothing here yet" /> : null}
       {home?.next ? <>
         {more ? <SkeletonRows count={2} /> : null}
         <MoreRows key={`${filter ?? "all"}:${home.rows.length}`} onMore={onMore} />

@@ -390,12 +390,7 @@ function Tabs({ at, children }: { at: number | null; children: ReactNode }) {
 
 /** A portrait, or their initial on a tone of their own when there's none. */
 function Face({ person, size = 30 }: { person: { name: string; username: string; picture: string | null }; size?: number }) {
-  const [broken, setBroken] = useState(false);
-  let h = 0;
-  for (const c of person.username) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  return <span className="kb-face" style={{ width: size, height: size, "--hue": h % 360 } as React.CSSProperties} title={person.name}>
-    {person.picture && !broken ? <img src={person.picture} alt="" onError={() => setBroken(true)} /> : <span>{(person.name.trim()[0] ?? "?").toUpperCase()}</span>}
-  </span>;
+  return <Portrait name={person.name} username={person.username} picture={person.picture} size={size} tint title={person.name} className="kb-face" />;
 }
 
 /** Your friends who have this book, and what they made of it. */

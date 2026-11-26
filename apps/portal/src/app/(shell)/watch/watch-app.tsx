@@ -1,5 +1,6 @@
 "use client";
 
+import { Portrait } from "@/components/portrait";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { watchApi, type Card, type Home, type Prefs, type Rating, type Shelf, type TitleView } from "./api";
 import { AppLockup, KimonoBranch } from "@kimono/ui";
@@ -287,7 +288,7 @@ export function WatchApp({ me, household, accent, signOut, phoneApp = false }: {
     {/* Shippori Mincho's heavy cut, for titles; the Portal carries only the 600. */}
     {/* eslint-disable-next-line @next/next/no-page-custom-font -- an App Router page, loaded with it */}
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@600;800&display=swap" precedence="default" />
-    <div ref={root} className={cx("kw", locked && "kw-locked")}>
+    <div ref={root} className={cx("kw k-night", locked && "kw-locked")}>
       {!profile ? <section className="kw-profiles" aria-label="Choose a profile">
         <div>
           <WatchBloom accent={accent} className="kw-bloom-lg" />
@@ -413,11 +414,7 @@ function AccountMenu({ profile, people, parties, onJoin, onSwitch, phoneApp }: {
 
 /* ───── Watch together: who to ask, and arriving by a link ───── */
 function InviteFace({ person }: { person: Person }) {
-  return <span className="kw-face-s" style={{ background: faceOf(person.username) }}>
-    {person.picture
-      // eslint-disable-next-line @next/next/no-img-element -- the Portal's own portrait
-      ? <img src={person.picture} alt="" /> : initial(person)}
-  </span>;
+  return <Portrait name={person.name} username={person.username} picture={person.picture} tint className="kw-face-s" />;
 }
 
 /** Writes [text] to the clipboard once it's known, starting now so the click still counts (Safari asks that). */

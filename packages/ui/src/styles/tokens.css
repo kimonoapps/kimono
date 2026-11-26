@@ -178,7 +178,7 @@
  * to read on the dark and still carry white on a seal. Wood and urushi stay what they are.
  * Follows the system unless the person picked one (data-theme on <html>).
  */
-:root[data-theme="dark"] {
+:root[data-theme="dark"], .k-night {
   color-scheme: dark;
   --k-ink: #efe0da;
   --k-ink-soft: #d8c2bd;
@@ -298,4 +298,16 @@
     --k-on-surface-variant: #3d302c;
     --k-outline-variant: #a98f87;
   }
+}
+
+/* A place that is always night whatever the house is (Watch): the night values above, and the roles
+   built from them declared again here, since a role resolves where it's declared. */
+.k-night {
+  --k-ground: var(--k-surface);
+  --k-sheet: var(--k-container-low);
+  --k-fold: var(--k-container-highest);
+  --k-hair: var(--k-outline-variant);
+  --k-hair-deep: color-mix(in srgb, var(--k-outline-variant) 65%, var(--k-on-surface-variant));
+  --k-accent: var(--k-suo);
+  --k-on-primary-container: #ffd9df;
 }
