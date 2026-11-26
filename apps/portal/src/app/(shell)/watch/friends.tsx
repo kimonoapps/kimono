@@ -180,12 +180,37 @@ function FriendCard({ f, asking, onAsk, onCancel, onTaste, onRemove }: { f: Frie
       <span className="kw-th"><Img src={now.title.backdrop ?? now.title.poster} /><InkMeter className="kw-bar" value={now.progress} label="Watched" /></span>
       <span><b>{now.title.name}</b><small>{[now.label, now.partyId ? "together" : null].filter(Boolean).join(" · ") || now.title.shelf}</small></span>
     </button> : null}
-    {recent.length ? <div className="kw-fr-recent">{recent.map((s) => <button key={s.title.id} aria-label={s.title.name} onClick={() => watch.openTitle(s.title.id)}>
+    {recent.length ? <FriendRecents recent={recent} name={f.name || f.username} /> : null}
+  </article>;
+}
+
+/** What a friend watched lately: a still each, the show's name and episode under it; arrows scroll when it runs past the card. */
+function FriendRecents({ recent, name }: { recent: Friend["recent"]; name: string }) {
+  const watch = useWatch();
+  const rail = useRef<HTMLDivElement>(null);
+  const [ends, setEnds] = useState({ l: false, r: false });
+  const measure = useCallback(() => {
+    const el = rail.current;
+    if (el) setEnds({ l: el.scrollLeft > 4, r: el.scrollLeft + el.clientWidth < el.scrollWidth - 4 });
+  }, []);
+  useEffect(() => {
+    measure();
+    const el = rail.current;
+    if (!el) return;
+    const seen = new ResizeObserver(measure);
+    seen.observe(el);
+    return () => seen.disconnect();
+  }, [measure, recent.length]);
+  const by = (sign: number) => rail.current?.scrollBy({ left: sign * rail.current.clientWidth * 0.8, behavior: "smooth" });
+  return <div className="kw-fr-rwrap">
+    {ends.l ? <button className="kw-fr-arrow kw-l" aria-label="Scroll left" onClick={() => by(-1)}><Icon name="left" /></button> : null}
+    <div className="kw-fr-recent" ref={rail} onScroll={measure} aria-label={`${name} watched`}>{recent.map((s) => <button key={s.title.id} aria-label={s.title.name} onClick={() => watch.openTitle(s.title.id)}>
       <span className="kw-fr-shot"><Img src={s.title.backdrop ?? s.title.poster} />{!s.finished ? <InkMeter className="kw-bar" value={s.progress} label="Watched" /> : null}</span>
       <b>{s.title.name}</b>
       <small>{s.finished ? (s.label ? `${s.label} · done` : "Finished") : s.label ?? `${Math.round(s.progress * 100)}% in`}</small>
-    </button>)}</div> : null}
-  </article>;
+    </button>)}</div>
+    {ends.r ? <button className="kw-fr-arrow kw-r" aria-label="Scroll right" onClick={() => by(1)}><Icon name="right" /></button> : null}
+  </div>;
 }
 
 /** Friends whose place is this episode (or film): their faces and "Sami is here". */
