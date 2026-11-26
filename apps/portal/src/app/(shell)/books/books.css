@@ -26,7 +26,8 @@
 .kb *,.kb *::before,.kb *::after{box-sizing:border-box}
 .kb [hidden]{display:none!important}
 .kb h1,.kb h2,.kb h3,.kb p{margin:0;color:inherit;letter-spacing:normal}
-.kb button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cursor:pointer;-webkit-tap-highlight-color:transparent;text-align:inherit;min-height:0;box-shadow:none}
+/* Kata's own parts (class k-…) keep their look; everything else starts bare. */
+.kb button:where(:not([class^="k-"]):not([class*=" k-"])){font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cursor:pointer;-webkit-tap-highlight-color:transparent;text-align:inherit;min-height:0;box-shadow:none}
 .kb button:disabled{cursor:default}
 .kb :focus-visible{outline:3px solid var(--primary);outline-offset:3px;border-radius:12px}
 .kb svg{display:block}
@@ -58,17 +59,8 @@
 @media (min-width:760px){ .kb .kb-tabs{display:flex} }
 
 /* Search: Kimono's field, as in Notes and Drive: a container tone, an accent ring when it's yours to type in. */
-.kb .kb-search{flex:1;min-width:0;max-width:560px;display:flex;align-items:center;gap:10px;height:44px;padding:0 6px 0 14px;border-radius:12px;
-  background:var(--surface-2);color:var(--fg-2);transition:box-shadow .2s var(--ease),background .2s var(--ease)}
-.kb .kb-search:hover{background:var(--surface-3)}
-.kb .kb-search:focus-within{background:var(--surface-2);box-shadow:inset 0 0 0 2px var(--primary)}
-.kb .kb-search svg{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
-.kb .kb-search input{flex:1;min-width:0;height:100%;border:0;outline:0;background:none;color:var(--fg);font:400 15px/1 var(--ui)}
-.kb .kb-search input::placeholder{color:var(--fg-2)}
-.kb .kb-search input::-webkit-search-cancel-button{display:none}
-.kb .kb-clear{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;color:var(--fg-2)}
-.kb .kb-clear:hover{background:var(--surface-3);color:var(--fg)}
-.kb .kb-clear svg{width:18px;height:18px}
+.kb .kb-search{flex:1;min-width:0;max-width:560px}
+.kb .kb-search .k-search{height:44px}
 /* Phone: the tabs move under the bar. */
 @media (max-width:759px){
   .kb .kb-top{flex-wrap:wrap;gap:10px}
@@ -89,8 +81,8 @@
 @media (prefers-reduced-motion:reduce){ .kb .kb-view:is(.kb-from-next,.kb-from-back){animation:kb-fade .2s var(--ease) both} }
 
 /* ───── Type ───── */
-.kb .kb-display{font-family:var(--display);font-weight:700;font-size:clamp(32px,4.4vw,56px);line-height:1.06;letter-spacing:-.01em;text-wrap:balance}
-.kb .kb-h1{font-family:var(--display);font-weight:700;font-size:clamp(24px,3vw,34px);line-height:1.15;text-wrap:balance}
+.kb .kb-display{font-family:var(--display);font-weight:600;font-size:clamp(32px,4.4vw,56px);line-height:1.06;letter-spacing:-.01em;text-wrap:balance}
+.kb .kb-h1{font-family:var(--display);font-weight:600;font-size:clamp(24px,3vw,34px);line-height:1.15;text-wrap:balance}
 .kb .kb-h1 em{font-style:normal;color:var(--primary)}
 .kb .kb-eyebrow{font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--primary);margin-bottom:10px}
 .kb .kb-byline{font-size:18px;color:var(--fg-2);margin-top:10px}
@@ -130,21 +122,13 @@
 /* ───── Shelves ───── */
 .kb .kb-shelf{margin-top:36px;animation:kb-rise .6s var(--ease-out) both}
 .kb .kb-shelf-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:0 var(--gutter);margin-bottom:6px}
-.kb .kb-shelf-head h2{font-family:var(--display);font-weight:700;font-size:clamp(20px,2.2vw,26px)}
-.kb .kb-rail-wrap{position:relative}
-.kb .kb-rail{display:flex;gap:clamp(20px,2.4vw,34px);overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x proximity;scrollbar-width:none;
-  padding:28px var(--gutter) 8px;scroll-padding-inline:var(--gutter)}
-.kb .kb-rail::-webkit-scrollbar{display:none}
+.kb .kb-shelf > .k-section-header{padding:0 var(--gutter);margin-bottom:6px}
+/* A shelf is Kata's Carousel in the page's gutters, the arrows on the covers. */
+.kb .kb-rail{--k-carousel-pad:var(--gutter);--k-carousel-arrow-top:calc(28px + 90px)}
+.kb .kb-rail .k-carousel-rail{gap:clamp(20px,2.4vw,34px);padding-top:28px;padding-bottom:8px;scroll-snap-type:x proximity}
 .kb .kb-slot{flex:none;width:var(--slot,132px);scroll-snap-align:start;display:flex;flex-direction:column;gap:14px}
 .kb .kb-sheet .kb-slot{--slot:104px}
-.kb .kb-page{position:absolute;top:calc(28px + 66px);z-index:3;width:48px;height:48px;border-radius:50%;display:grid;place-items:center;background:var(--surface-hi);color:var(--fg);
-  box-shadow:0 2px 8px rgb(var(--shadow) / .2);opacity:0;transition:opacity .2s,transform .3s var(--spring)}
-.kb .kb-page svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
-.kb .kb-prev{left:calc(var(--gutter) - 20px)}
-.kb .kb-next{right:calc(var(--gutter) - 20px)}
-.kb .kb-rail-wrap:hover .kb-page{opacity:1}
-.kb .kb-page:hover{transform:scale(1.08)}
-@media (hover:none){ .kb .kb-page{display:none} }
+.kb .kb-sheet .kb-rail{--k-carousel-arrow-top:calc(28px + 70px)}
 
 .kb .kb-caption{display:grid;gap:2px;min-width:0;font-size:14px;line-height:1.3}
 .kb .kb-cap-title{font-weight:600;color:var(--fg);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
@@ -191,8 +175,7 @@
 .kb .kb-genre:active{transform:scale(.96)}
 .kb .kb-genre[aria-current],.kb .kb-genre[aria-current]:hover{background:var(--primary);color:var(--on-primary);border-radius:19px}
 .kb .kb-genre svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.kb .kb-crumb{display:inline-flex;align-items:center;gap:4px;margin:0 var(--gutter) 6px;color:var(--fg-2)}
-.kb .kb-crumb svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.kb .kb-results > .kb-pagehead{padding:8px var(--gutter) 6px}
 .kb .kb-results > .kb-display{padding:0 var(--gutter);margin:0 0 6px}
 .kb .kb-more{display:flex;justify-content:center;padding:32px var(--gutter) 48px}
 
@@ -229,6 +212,8 @@
 .kb .kb-segments button:disabled{opacity:.4}
 
 /* ───── Empty and problems ───── */
+.kb .kb-empty-shelf{display:grid;justify-items:center;padding-top:56px}
+.kb .kb-empty-shelf .k-empty{padding-top:var(--k-space-4)}
 .kb .kb-empty{display:grid;justify-items:center;gap:14px;text-align:center;padding:72px var(--gutter)}
 .kb .kb-empty-books{display:flex;align-items:flex-end;gap:6px;height:92px;margin-bottom:8px}
 .kb .kb-empty-books span{width:22px;border-radius:3px;background:var(--surface-3)}
@@ -314,11 +299,6 @@
   .kb .kb-info{text-align:left}
 }
 
-/* ───── Toast ───── */
-.kb .kb-toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 24px);z-index:60;translate:-50% 24px;opacity:0;pointer-events:none;
-  max-width:min(560px,calc(100% - 32px));padding:14px 20px;border-radius:16px;background:var(--fg);color:var(--bg);font-size:15px;font-weight:500;
-  transition:opacity .25s var(--ease),translate .45s var(--spring)}
-.kb .kb-toast.kb-on{opacity:1;translate:-50% 0}
 
 /* ───── Loading ───── */
 .kb .kb-ghost{display:block;width:132px;aspect-ratio:2/3;border-radius:3px 6px 6px 3px;background:var(--surface-3);animation:kb-breathe 1.6s var(--ease) infinite both}
@@ -410,10 +390,10 @@
 .kb .kb-calm .kb-reader-foot{opacity:.35}
 .kb .kb-calm .kb-reader-top:focus-within{opacity:1;translate:0 0}
 .kb .kb-reader-title{flex:1;min-width:0;display:grid;line-height:1.25;padding-left:4px}
-.kb .kb-reader-title b{font-family:var(--display);font-weight:700;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kb .kb-reader-title b{font-family:var(--display);font-weight:600;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .kb .kb-reader-title span{font-size:13px;opacity:.65;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .kb .kb-reader-group{display:flex;align-items:center;gap:2px;padding:3px;border-radius:24px;background:color-mix(in srgb,var(--paper-ink) 7%,transparent)}
-.kb .kb-reader-icon{min-width:42px;height:42px;padding:0 8px;border-radius:21px;display:grid;place-items:center;color:inherit;opacity:.8;font-family:var(--display);font-weight:700;
+.kb .kb-reader-icon{min-width:42px;height:42px;padding:0 8px;border-radius:21px;display:grid;place-items:center;color:inherit;opacity:.8;font-family:var(--display);font-weight:600;
   transition:background .2s,border-radius .3s var(--spring),opacity .2s}
 .kb .kb-reader-icon:hover{background:color-mix(in srgb,var(--paper-ink) 9%,transparent);opacity:1}
 .kb .kb-reader-icon:active{border-radius:12px}

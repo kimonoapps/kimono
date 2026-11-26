@@ -2,7 +2,7 @@
 
 import { useTabTitle } from "@/components/tab-title";
 import { createContext, startTransition, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { AppLockup, InkPortraitFrame, InkWave, MorphLoader, type AppIdentity, InkMeter } from "@kimono/ui";
+import { AppLockup, InkPortraitFrame, InkWave, MorphLoader, type AppIdentity, InkMeter, BackButton, Carousel, EmptyState, PageHeader, Seal, SectionHeader, Toast, SearchField as KataSearch } from "@kimono/ui";
 import { Crossing, CrossingSeal } from "@/components/crossing";
 import { Portrait } from "@/components/portrait";
 import Markdown, { type Components } from "react-markdown";
@@ -60,7 +60,6 @@ export function BooksApp({ app, you, accent, firstName, home: arrived }: { app: 
   const root = useRef<HTMLDivElement>(null);
 
   const say = useCallback((text: string) => setToast({ text, at: Date.now() }), []);
-  useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 3200); return () => clearTimeout(t); }, [toast]);
 
   const loadHome = useCallback(() => {
     booksApi.home().then((h) => { setHome(h); setShelf(h.shelf); setProblem(null); })
@@ -127,29 +126,26 @@ export function BooksApp({ app, you, accent, firstName, home: arrived }: { app: 
 
     {open ? <BookSheet key={open} bookKey={open} onClose={closeBook} onOpen={openBook} onPlaced={placed} /> : null}
     </MyShelf.Provider>
-    <div className={cx("kb-toast", toast && "kb-on")} role="status" aria-live="polite">{toast?.text}</div>
+    <Toast toast={toast} />
   </div>;
 }
 
 /* ── Search ────────────────────────────────────────────────────────────── */
 
 function SearchField({ value, onChange }: { value: string; onChange: (q: string) => void }) {
-  const input = useRef<HTMLInputElement>(null);
+  const box = useRef<HTMLDivElement>(null);
+  /* "/" anywhere puts you in the search. */
   useEffect(() => {
     const slash = (e: KeyboardEvent) => {
-      if (e.key === "/" && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA") { e.preventDefault(); input.current?.focus(); }
+      if (e.key === "/" && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA") { e.preventDefault(); box.current?.querySelector("input")?.focus(); }
     };
     addEventListener("keydown", slash);
     return () => removeEventListener("keydown", slash);
   }, []);
-  return <label className="kb-search">
-    <svg viewBox="0 0 24 24" aria-hidden><path d="M10.5 4a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13Zm9.5 16-4.8-4.8" /></svg>
-    <input ref={input} type="search" value={value} placeholder="Title, author or ISBN" aria-label="Search books"
-      onChange={(e) => onChange(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape") { onChange(""); e.currentTarget.blur(); } }} />
-    {value ? <button type="button" className="kb-clear" aria-label="Clear" onClick={() => { onChange(""); input.current?.focus(); }}>
-      <svg viewBox="0 0 24 24" aria-hidden><path d="m7 7 10 10M17 7 7 17" /></svg>
-    </button> : null}
-  </label>;
+  return <div ref={box} className="kb-search">
+    <KataSearch value={value} onChange={onChange} placeholder="Title, author or ISBN" label="Search books"
+      onKeyDown={(e) => { if (e.key === "Escape") { onChange(""); e.currentTarget.blur(); } }} />
+  </div>;
 }
 
 function SearchResults({ q, genres, onOpen, onBrowse }: { q: string; genres: Genre[]; onOpen: (key: string) => void; onBrowse: (id: string) => void }) {
@@ -187,7 +183,7 @@ function HomePage({ home, reading, firstName, problem, onRetry, onOpen, onShelf,
   home: Home | null; reading: ShelfItem[]; firstName: string; problem: string | null; onRetry: () => void; onOpen: (key: string) => void; onShelf: () => void;
   onBrowse: (id: string) => void; onPlaced: (items: ShelfItem[] | null, note?: string) => void;
 }) {
-  if (problem && !home) return <div className="kb-empty"><p>{problem}</p><button className="kb-btn kb-tonal" onClick={onRetry}>Try again</button></div>;
+  if (problem && !home) return <EmptyState title="Books isn't answering" action={<Seal tone="quiet" onClick={onRetry}>Try again</Seal>}>{problem}</EmptyState>;
   const featured = home?.featured ?? null;
   return <>
     {!home ? <HeroGhost /> : featured ? <Featured book={featured} onOpen={onOpen} onPlaced={onPlaced} />
@@ -202,7 +198,7 @@ function HomePage({ home, reading, firstName, problem, onRetry, onOpen, onShelf,
         </div>
       </section>}
     {home?.genres.length ? <nav className="kb-genres" aria-label="Genres">{home.genres.map((g) => <button key={g.id} className="kb-genre" onClick={() => onBrowse(g.id)}>{g.title}</button>)}</nav> : null}
-    {reading.length ? <Shelf title="Continue reading" action={reading.length > 6 ? <button className="kb-link" onClick={onShelf}>Your shelf</button> : undefined}>
+    {reading.length ? <Shelf title="Continue reading" more={reading.length > 6 ? { label: "Your shelf", onClick: onShelf } : undefined}>
       {reading.map((s) => <div key={s.key} className="kb-slot">
         <Book3D book={asBook(s)} progress={s.fraction} onOpen={() => onOpen(s.key)} />
         <BookCaption book={asBook(s)} />
@@ -210,7 +206,7 @@ function HomePage({ home, reading, firstName, problem, onRetry, onOpen, onShelf,
     </Shelf> : null}
     {home?.friends.length ? <FriendsShelf friends={home.friends} onOpen={onOpen} /> : null}
     {!home ? <ShelfGhosts /> : home.rows.map((row, i) => <Shelf key={row.id} title={row.title} delay={i}
-      action={home.genres.some((g) => g.id === row.id) ? <button className="kb-link" onClick={() => onBrowse(row.id)}>See all</button> : undefined}>
+      more={home.genres.some((g) => g.id === row.id) ? { onClick: () => onBrowse(row.id) } : undefined}>
       {row.books.map((b, n) => <div key={b.key} className="kb-slot">
         <Book3D book={b} onOpen={() => onOpen(b.key)} badge={row.id === "trending" && n < 10 ? <span className="kb-rank">{n + 1}</span> : undefined} />
         <BookCaption book={b} />
@@ -269,8 +265,7 @@ function GenrePage({ id, genres, onOpen, onBrowse, onBack }: { id: string; genre
   const title = pages[0]?.title ?? genres.find((g) => g.id === id)?.title ?? "";
   const more = pages.at(-1)?.more ?? false;
   return <section className="kb-results">
-    <button className="kb-link kb-crumb" onClick={onBack}><svg viewBox="0 0 24 24" aria-hidden><path d="m14 6-6 6 6 6" /></svg>Discover</button>
-    <h1 className="kb-display">{title}</h1>
+    <PageHeader className="kb-pagehead" back={<BackButton label="Back to Discover" onClick={onBack} />} title={title} />
     <nav className="kb-genres" aria-label="Genres">{genres.map((g) => g.id === id
       ? <button key={g.id} className="kb-genre" aria-current="page" ref={(el) => el?.scrollIntoView({ block: "nearest", inline: "nearest" })}>{g.title}</button>
       : <button key={g.id} className="kb-genre" onClick={() => onBrowse(g.id)}>{g.title}</button>)}</nav>
@@ -285,19 +280,10 @@ function GenrePage({ id, genres, onOpen, onBrowse, onBack }: { id: string; genre
   </section>;
 }
 
-function Shelf({ title, children, delay = 0, action }: { title: ReactNode; children: ReactNode; delay?: number; action?: ReactNode }) {
-  const rail = useRef<HTMLDivElement>(null);
-  const [edge, setEdge] = useState({ start: true, end: false });
-  const measure = () => { const r = rail.current; if (r) setEdge({ start: r.scrollLeft < 8, end: r.scrollLeft + r.clientWidth > r.scrollWidth - 8 }); };
-  useEffect(measure, []);
-  const page = (dir: 1 | -1) => rail.current?.scrollBy({ left: dir * rail.current.clientWidth * 0.85, behavior: "smooth" });
+function Shelf({ title, children, delay = 0, more }: { title: ReactNode; children: ReactNode; delay?: number; more?: { label?: string; onClick: () => void } }) {
   return <section className="kb-shelf" style={{ animationDelay: `${Math.min(delay, 6) * 70}ms` }}>
-    <div className="kb-shelf-head"><h2>{title}</h2>{action}</div>
-    <div className="kb-rail-wrap">
-      <button className="kb-page kb-prev" aria-label="Back" hidden={edge.start} onClick={() => page(-1)}><svg viewBox="0 0 24 24" aria-hidden><path d="m14 6-6 6 6 6" /></svg></button>
-      <div ref={rail} className="kb-rail" onScroll={measure}>{children}</div>
-      <button className="kb-page kb-next" aria-label="More" hidden={edge.end} onClick={() => page(1)}><svg viewBox="0 0 24 24" aria-hidden><path d="m10 6 6 6-6 6" /></svg></button>
-    </div>
+    <SectionHeader title={title} more={more} />
+    <Carousel label={typeof title === "string" ? title : "Books"} className="kb-rail">{children}</Carousel>
   </section>;
 }
 
@@ -511,7 +497,7 @@ function ShelfPage({ you, shelf, friends, onOpen, onDiscover }: { you: You; shel
   </header>;
   const friendsPart = friends?.length
     ? <FriendsShelf friends={friends} onOpen={onOpen} />
-    : <section className="kb-shelf kb-you-friends"><div className="kb-shelf-head"><h2>Friends</h2></div>
+    : <section className="kb-shelf kb-you-friends"><SectionHeader title="Friends" />
       <div className="kb-friends-empty">
         <span className="kb-friends-seats" aria-hidden="true"><i /><i /><i /></span>
         <p>When friends share what they&rsquo;re reading, their books land here.</p>
@@ -519,11 +505,9 @@ function ShelfPage({ you, shelf, friends, onOpen, onDiscover }: { you: You; shel
       </div></section>;
   if (!shelf.length) return <>
     {head}
-    <div className="kb-empty kb-empty-shelf">
+    <div className="kb-empty-shelf">
       <div className="kb-empty-books" aria-hidden><span /><span /><span /></div>
-      <h2 className="kb-h1">Your shelf is empty</h2>
-      <p className="kb-note">Books you want to read, are reading and have read live here, and on your profile.</p>
-      <button className="kb-btn kb-filled" onClick={onDiscover}>Find a book</button>
+      <EmptyState title="Your shelf is empty" action={<Seal onClick={onDiscover}>Find a book</Seal>}>Books you want to read, are reading and have read live here, and on your profile.</EmptyState>
     </div>
     {friendsPart}
   </>;
@@ -534,7 +518,7 @@ function ShelfPage({ you, shelf, friends, onOpen, onDiscover }: { you: You; shel
       {shelfOrder.map((s) => <button key={s} role="tab" aria-selected={only === s} onClick={() => setOnly(s)} disabled={!by(s).length}>{shelfTitle[s]} <span>{by(s).length}</span></button>)}
     </div>
     {shelfOrder.filter((s) => (only === null || only === s) && by(s).length).map((s, i) => <section key={s} className="kb-shelf kb-mine" style={{ animationDelay: `${i * 70}ms` }}>
-      <div className="kb-shelf-head"><h2>{shelfTitle[s]}</h2></div>
+      <SectionHeader title={shelfTitle[s]} count={by(s).length} />
       <div className="kb-grid">
         {by(s).map((b) => <div key={b.key} className="kb-cell">
           <Book3D book={asBook(b)} progress={s === "reading" ? b.fraction : undefined} onOpen={() => onOpen(b.key)} />
