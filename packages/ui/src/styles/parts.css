@@ -20,7 +20,7 @@
 }
 .k-back:hover { background: var(--k-container-highest); }
 .k-back:active { transform: scale(.94); }
-.k-back:focus-visible { outline: 2px solid var(--k-suo); outline-offset: 2px; }
+.k-back:focus-visible { outline: 2px solid var(--k-accent); outline-offset: 2px; }
 
 /* 節 A section's heading: headline Mincho 22/27, a quiet count, "See all" on the right. */
 .k-section-header {
@@ -63,7 +63,7 @@
 }
 .k-carousel-arrow:hover { background: var(--k-container-highest); }
 .k-carousel-arrow:active { transform: translateY(-50%) scale(.94); }
-.k-carousel-arrow:focus-visible { outline: 2px solid var(--k-suo); outline-offset: 2px; }
+.k-carousel-arrow:focus-visible { outline: 2px solid var(--k-accent); outline-offset: 2px; }
 .k-carousel-arrow.k-l { left: max(4px, calc(var(--k-carousel-pad) - 20px)); }
 .k-carousel-arrow.k-r { right: max(4px, calc(var(--k-carousel-pad) - 20px)); }
 @media (hover: none) { .k-carousel-arrow { display: none; } }
@@ -94,7 +94,7 @@
   border: var(--k-hairline) solid transparent; transition: border-color var(--k-t-state), background var(--k-t-state);
   cursor: text;
 }
-.k-search:focus-within { border-color: var(--k-suo); background: var(--k-container-highest); }
+.k-search:focus-within { border-color: var(--k-accent); background: var(--k-container-highest); }
 .k-search > svg { width: 20px; height: 20px; flex: none; }
 .k-search > input {
   flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: none; padding: 0;

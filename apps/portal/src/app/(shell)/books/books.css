@@ -61,6 +61,7 @@
 /* Search: Kimono's field, as in Notes and Drive: a container tone, an accent ring when it's yours to type in. */
 .kb .kb-search{flex:1;min-width:0;max-width:560px}
 .kb .kb-search .k-search{height:44px}
+.kb .kb-search .k-search input:focus-visible{outline:none}
 /* Phone: the tabs move under the bar. */
 @media (max-width:759px){
   .kb .kb-top{flex-wrap:wrap;gap:10px}
