@@ -161,7 +161,7 @@ fun YouScreen(session: Session, platform: Platform, me: AccountProfile?, friends
     ))
 }
 
-/** Settings, off You's gear: signing in, Kimono Read, the household's apps (for administrators), how it looks, signing out. */
+/** Settings, off You's gear: signing in, Kimono Reader, the household's apps (for administrators), how it looks, signing out. */
 @Composable
 fun SettingsScreen(session: Session, platform: Platform, me: AccountProfile?, open: (String) -> Unit, back: () -> Unit) {
     val scope = rememberCoroutineScope()
@@ -187,7 +187,7 @@ fun SettingsScreen(session: Session, platform: Platform, me: AccountProfile?, op
                 TestflightQuiet(session.server, platform)
             }
             GroupLabel("Devices")
-            KimonoGroup(listOf(GroupItem("Set up Kimono Read", icon = "book") { open("kimono-read") }))
+            KimonoGroup(listOf(GroupItem("Set up Kimono Reader", icon = "book") { open("kimono-read") }))
             /* Administrators look after the household's apps from here, as under Admin on the website. */
             if (me?.role == "owner" || me?.role == "admin") {
                 GroupLabel("Kimono")

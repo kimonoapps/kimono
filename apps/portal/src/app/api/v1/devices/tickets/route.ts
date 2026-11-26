@@ -3,10 +3,10 @@ import { createTicket } from "@/lib/kimono-read";
 import { readFailure } from "../errors";
 
 /**
- * Setting up a Kimono Read from the phone: a one-time ticket, and the address
+ * Setting up a Kimono Reader from the phone: a one-time ticket, and the address
  * of the setup page the reader serves on its own hotspot, with this Kimono's
  * address and the ticket filled in. The phone opens it once it has joined the
- * reader's "Kimono Read" Wi-Fi; the person only picks their Wi-Fi and its
+ * reader's "Kimono Reader" Wi-Fi; the person only picks their Wi-Fi and its
  * password there.
  */
 export async function POST(request: Request) {

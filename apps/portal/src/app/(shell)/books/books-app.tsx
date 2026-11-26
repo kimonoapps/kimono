@@ -790,7 +790,7 @@ function FileActions({ files, prefers, onPrefers, onRead }: {
       <div className="kb-format-options">
         <button className="kb-format-option" onClick={() => choose("epub")}>
           <span className="kb-format-name">EPUB</span>
-          <span>Text that fits your screen and your size, your place kept on every device and a Kimono Read.{madeFromPdf(epub) ? " Made from the PDF by Kimono, so tables and pictures may sit differently." : ""}</span>
+          <span>Text that fits your screen and your size, your place kept on every device and a Kimono Reader.{madeFromPdf(epub) ? " Made from the PDF by Kimono, so tables and pictures may sit differently." : ""}</span>
         </button>
         <button className="kb-format-option" onClick={() => choose("pdf")}>
           <span className="kb-format-name">PDF</span>

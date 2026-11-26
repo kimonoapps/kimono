@@ -48,7 +48,7 @@ data class KimonoProfile(
     val privacy: Privacy? = null,
     /** Who they're friends with; null when they keep it to themselves. */
     val friendList: List<FriendPerson>? = null,
-    /** They read on a Kimono Read, since this ISO date. */
+    /** They read on a Kimono Reader, since this ISO date. */
     val kimonoRead: KimonoRead? = null,
     /** On your own profile: the titles you took off its rows, to put back. */
     val off: List<OffProfile> = emptyList(),

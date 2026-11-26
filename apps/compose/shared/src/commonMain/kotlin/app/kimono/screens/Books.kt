@@ -876,7 +876,7 @@ private fun FormatDialog(epub: BookFile, onDismiss: () -> Unit, choose: (String,
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("This book comes two ways.", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            FormatOption("EPUB", "Text that fits your screen and your size, your place kept on every device and a Kimono Read." +
+            FormatOption("EPUB", "Text that fits your screen and your size, your place kept on every device and a Kimono Reader." +
                 if (epub.madeFromPdf) " Made from the PDF by Kimono, so tables and pictures may sit differently." else "") { choose("epub", remember) }
             FormatOption("PDF", "The original pages, exactly as printed. Opens in your phone's viewer.") { choose("pdf", remember) }
             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { remember = !remember }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {

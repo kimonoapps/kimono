@@ -29,7 +29,7 @@ const run = promisify(execFile);
 const MINUTE = 60_000;
 /** Ink maps are drawn at this many dots per inch: one pixel is two points. */
 export const INK_DPI = 36;
-/** A figure's longest side, in pixels: sharp on a phone, light enough for Kimono Read's ESP32. */
+/** A figure's longest side, in pixels: sharp on a phone, light enough for Kimono Reader's ESP32. */
 export const FIGURE_PX = 1200;
 
 export class PdfProblem extends Error {}

@@ -83,7 +83,7 @@ private val json = Json { ignoreUnknownKeys = true }
 /**
  * 本 Kimono Books: what you're reading, shelves to browse, a book's page with
  * your rating and which friends read it, and the files the household's
- * sources have for it. The same API the web and a Kimono Read use.
+ * sources have for it. The same API the web and a Kimono Reader use.
  */
 class Books(private val session: Session) {
     suspend fun home(): BooksHome = json.decodeFromString(session.fetch(HOME))

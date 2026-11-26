@@ -1,6 +1,6 @@
 /**
  * The proxy (proxy.ts) tells /api/v1 routes which route a bearer request is
- * for, so lib/api-v1.ts can limit what a Kimono Read device token reaches.
+ * for, so lib/api-v1.ts can limit what a Kimono Reader device token reaches.
  * The key is made once per server process and never leaves it, so a client
  * can't send these headers itself.
  */

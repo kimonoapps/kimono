@@ -3,7 +3,7 @@ import { startPairing } from "@/lib/kimono-read";
 import { readFailure } from "../../errors";
 
 /**
- * A Kimono Read asks to be paired: `{ deviceId, model, secret }`, no sign-in.
+ * A Kimono Reader asks to be paired: `{ deviceId, model, secret }`, no sign-in.
  * It shows the code (and a QR code of `url`) for the person to approve on a
  * signed-in phone, then polls /pair/claim with the same secret.
  */

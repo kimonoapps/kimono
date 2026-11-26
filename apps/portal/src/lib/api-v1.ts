@@ -52,7 +52,7 @@ async function appUser(authorization: string): Promise<ApiUser | null> {
 }
 
 /*
- * A Kimono Read e-reader's device token (lib/kimono-read.ts). It may use Kimono
+ * A Kimono Reader e-reader's device token (lib/kimono-read.ts). It may use Kimono
  * Books and read Kimono Drive, and nothing else. The route comes from the
  * proxy (proxy.ts), with a key only this server process knows, so a request
  * that didn't pass through it (or claims another route) is refused.

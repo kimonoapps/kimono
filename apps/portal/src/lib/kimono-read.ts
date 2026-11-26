@@ -7,12 +7,12 @@ import { DatabaseSync } from "node:sqlite";
 import { stateDir } from "./state";
 
 /**
- * 携 Kimono Read: e-readers paired to a person's Kimono.
+ * 携 Kimono Reader: e-readers paired to a person's Kimono.
  *
  * Nobody types on the reader. It gets on Wi-Fi from a page it serves on its
  * own hotspot, filled in on the phone, and then it is paired one of two ways:
  *
- * - From the phone first (Account > Set up Kimono Read): the phone asks for a
+ * - From the phone first (Account > Set up Kimono Reader): the phone asks for a
  *   setup ticket, hands it to the reader with the Wi-Fi details, and the
  *   reader trades it for its token. Nothing to approve afterwards.
  * - From the reader first: once online it asks for a pairing and shows a QR
@@ -73,11 +73,11 @@ function sweep() {
 }
 
 function cleanDeviceId(value: unknown): string {
-  if (typeof value !== "string" || !/^[A-Za-z0-9._:-]{4,64}$/.test(value)) throw new ReadProblem("That isn't a Kimono Read device id.");
+  if (typeof value !== "string" || !/^[A-Za-z0-9._:-]{4,64}$/.test(value)) throw new ReadProblem("That isn't a Kimono Reader device id.");
   return value;
 }
 function cleanModel(value: unknown): string {
-  if (typeof value !== "string" || !/^[a-z0-9._-]{1,32}$/i.test(value)) throw new ReadProblem("That isn't a Kimono Read model.");
+  if (typeof value !== "string" || !/^[a-z0-9._-]{1,32}$/i.test(value)) throw new ReadProblem("That isn't a Kimono Reader model.");
   return value.toLowerCase();
 }
 function cleanSecret(value: unknown): string {
@@ -89,7 +89,7 @@ export function cleanCode(value: unknown): string {
   if (code.length !== 6) throw new ReadProblem("A pairing code has six letters and numbers.");
   return code;
 }
-const defaultName = (model: string) => model === "silkscreen" ? "Kimono Read" : `Kimono Read (${model})`;
+const defaultName = (model: string) => model === "silkscreen" ? "Kimono Reader" : `Kimono Reader (${model})`;
 
 /** A new token for this reader of this person; an earlier one for the same reader stops working. */
 function mint(username: string, deviceId: string, model: string): string {

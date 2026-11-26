@@ -4,10 +4,10 @@ import { auth } from "@/auth";
 import { createTicket } from "@/lib/kimono-read";
 import "../read.css";
 
-export const metadata: Metadata = { title: "Set up Kimono Read" };
+export const metadata: Metadata = { title: "Set up Kimono Reader" };
 
 /**
- * Setting up a Kimono Read from the phone, with nothing typed on the reader.
+ * Setting up a Kimono Reader from the phone, with nothing typed on the reader.
  * The reader serves a setup page on its own Wi-Fi; this hands it this
  * Kimono's address and a one-time ticket, so the person only picks their
  * Wi-Fi and types its password, here on the phone.
@@ -19,10 +19,10 @@ export default async function SetupPage() {
   const server = (process.env.KIMONO_PORTAL_URL || process.env.AUTH_URL?.replace(/\/api\/auth\/?$/, "") || "http://localhost:3000").replace(/\/+$/, "");
   const setupUrl = `http://192.168.4.1/kimono?server=${encodeURIComponent(server)}&ticket=${encodeURIComponent(ticket)}`;
   return <div className="kimono-read">
-    <h1>Set up Kimono Read</h1>
+    <h1>Set up Kimono Reader</h1>
     <p className="lede">Your phone does the typing. The reader never asks for anything.</p>
     <ol>
-      <li>Turn the reader on. It shows <b>Set up with your phone</b> and a Wi-Fi called <b>Kimono Read-…</b>.</li>
+      <li>Turn the reader on and pick <b>Set up Kimono Reader</b>. It shows a Wi-Fi called <b>Kimono Reader-…</b>.</li>
       <li>On this phone, join that Wi-Fi (scan the reader&apos;s QR code, or pick it in Wi-Fi settings). If a sign-in sheet opens, close it.</li>
       <li>Come back here and tap <b>Continue on the reader</b>. Pick your home Wi-Fi and type its password. The reader joins it, pairs itself with your Kimono and shows your shelf.</li>
     </ol>

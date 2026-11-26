@@ -6,7 +6,7 @@ import { listReaders, renameReader, revokeReader, ReadProblem } from "@/lib/kimo
 
 const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString("en", { day: "numeric", month: "short", year: "numeric" }) : "not yet";
 
-/** Kimono Read e-readers paired with this account: rename or unpair. */
+/** Kimono Reader e-readers paired with this account: rename or unpair. */
 export async function KimonoReaders({ username }: { username: string }) {
   const readers = listReaders(username);
 
@@ -25,9 +25,9 @@ export async function KimonoReaders({ username }: { username: string }) {
   }
 
   return <section style={{ marginTop: 28 }}>
-    <h2 style={{ font: "inherit", fontWeight: 600, padding: "0 0 8px 12px", margin: 0 }}>Kimono Read</h2>
+    <h2 style={{ font: "inherit", fontWeight: 600, padding: "0 0 8px 12px", margin: 0 }}>Kimono Reader</h2>
     <p style={{ color: "var(--on-surface-variant)", padding: "0 0 14px 12px", margin: 0 }}>
-      {readers.length ? "E-readers paired with your Kimono. Unpairing one signs it out at once." : <>No e-reader is paired. <a href="/read/setup">Set up Kimono Read</a></>}
+      {readers.length ? "E-readers paired with your Kimono. Unpairing one signs it out at once." : <>No e-reader is paired. <a href="/read/setup">Set up Kimono Reader</a></>}
     </p>
     {readers.length ? <div className="seg">{readers.map((reader) => <div className="row" key={reader.id}>
       <InkBlot tint="#5c4f7a" seed={reader.id}><LineIcon name="book" /></InkBlot>

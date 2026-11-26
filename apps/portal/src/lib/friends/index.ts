@@ -196,7 +196,7 @@ export async function profileOf(viewer: string, username: string, origin: string
   const profile = profileFor(db, viewer, person, () => sections);
   if (!profile.open) return profile;
   const everyone = await people();
-  /* Badges are for friends too: a Kimono Read shows even when their Books rows don't. */
+  /* Badges are for friends too: a Kimono Reader shows even when their Books rows don't. */
   const kimonoRead = await import("./books-section").then((m) => m.kimonoReadOf(person.username)).catch(() => null);
   /* Music's and Books' widgets, each part only as far as they share it (their own profile shows it all). */
   const you = profile.you;

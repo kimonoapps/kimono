@@ -43,9 +43,9 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 /*
- * 携 Set up Kimono Read: an e-reader joins Kimono with nothing typed on it.
+ * 携 Set up Kimono Reader: an e-reader joins Kimono with nothing typed on it.
  *
- * The reader opens its own Wi-Fi ("Kimono Read-…") and serves a setup page.
+ * The reader opens its own Wi-Fi ("Kimono Reader-…") and serves a setup page.
  * This screen asks the Portal for a one-time setup link carrying this Kimono's
  * address and a ticket; once the phone has joined the reader's Wi-Fi, opening
  * the link shows that page, where the person only picks their home Wi-Fi and
@@ -85,10 +85,10 @@ fun KimonoReadScreen(session: Session, back: () -> Unit) {
             .onFailure { problem = (it as? KimonoProblem)?.message ?: "Kimono couldn't make a setup link." }.getOrNull()
     }
 
-    Scaffold(containerColor = MaterialTheme.colorScheme.surface, topBar = { KimonoTopBar("Kimono Read", onBack = back) }) { padding ->
+    Scaffold(containerColor = MaterialTheme.colorScheme.surface, topBar = { KimonoTopBar("Kimono Reader", onBack = back) }) { padding ->
         Column(Modifier.padding(padding).padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text("Your phone does the typing. The reader never asks for anything.", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Step(1, "Open Kimono Read on the reader. It shows “Set up with your phone” and a Wi-Fi called Kimono Read-….")
+            Step(1, "Turn the reader on and pick Set up Kimono Reader. It shows a Wi-Fi called Kimono Reader-….")
             Step(2, "Join that Wi-Fi on this phone: scan the QR code on the reader, or pick it in Wi-Fi settings. If a sign-in sheet opens, close it.")
             Step(3, "Come back here and tap Continue on the reader. Pick your home Wi-Fi and type its password. The reader joins it and pairs itself.")
             Seal("Continue on the reader", enabled = link != null, onClick = { link?.let { uri.openUri(it) } })

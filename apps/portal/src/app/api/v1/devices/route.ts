@@ -1,7 +1,7 @@
 import { apiJson, apiUser, unauthorized } from "@/lib/api-v1";
 import { listReaders } from "@/lib/kimono-read";
 
-/** Your paired Kimono Read e-readers. */
+/** Your paired Kimono Reader e-readers. */
 export async function GET() {
   const user = await apiUser();
   if (!user) return unauthorized();

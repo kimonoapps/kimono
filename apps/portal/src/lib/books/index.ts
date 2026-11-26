@@ -576,12 +576,12 @@ export async function friendsReading(viewer: string, limit = 24): Promise<Friend
   return out;
 }
 
-/* ── Kimono Read devices ───────────────────────────────────────────────── */
+/* ── Kimono Reader devices ───────────────────────────────────────────────── */
 
 export type ReadDevice = { device: string; model: string; firstSeen: string; lastSeen: string };
 
 /**
- * A Kimono Read e-reader says so on every call: `X-Kimono-Device:
+ * A Kimono Reader e-reader says so on every call: `X-Kimono-Device:
  * kimono-read/<model>; id=<device id>`. Whoever it's signed in as owns one,
  * which their profile shows with a badge.
  */
@@ -602,7 +602,7 @@ export function readDevices(username: string): ReadDevice[] {
   return rows.map((r) => ({ device: r.device, model: r.model, firstSeen: new Date(r.first_seen).toISOString(), lastSeen: new Date(r.last_seen).toISOString() }));
 }
 
-/** For the profile's badge: since when this person has had a Kimono Read, or null. */
+/** For the profile's badge: since when this person has had a Kimono Reader, or null. */
 export function kimonoReadSince(username: string): string | null {
   return readDevices(username)[0]?.firstSeen ?? null;
 }

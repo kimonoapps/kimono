@@ -4,7 +4,7 @@ import type { Section } from "./model";
 /**
  * 本 Books on a Kimono profile: what someone is reading (and how far), wants
  * to read and has read, from their Books shelf; and whether they read on a
- * Kimono Read. Books keeps both (lib/books); a profile only reads them.
+ * Kimono Reader. Books keeps both (lib/books); a profile only reads them.
  */
 export function booksSectionsFrom(shelf: ShelfItem[]): Section[] {
   const latest = [...shelf].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
@@ -58,7 +58,7 @@ export async function booksExtras(username: string) {
   };
 }
 
-/** Since when they've read on a Kimono Read (the profile's badge), or null. It's about the device, so it shows whatever the Books switch says. */
+/** Since when they've read on a Kimono Reader (the profile's badge), or null. It's about the device, so it shows whatever the Books switch says. */
 export async function kimonoReadOf(username: string): Promise<{ since: string } | null> {
   const { kimonoReadSince } = await import("../books");
   const since = kimonoReadSince(username.toLowerCase());

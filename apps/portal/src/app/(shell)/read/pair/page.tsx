@@ -5,12 +5,12 @@ import { auth } from "@/auth";
 import { approvePairing, pairingFor, ReadProblem } from "@/lib/kimono-read";
 import "../read.css";
 
-export const metadata: Metadata = { title: "Pair a Kimono Read" };
+export const metadata: Metadata = { title: "Pair a Kimono Reader" };
 
 type Search = Promise<{ code?: string; done?: string; error?: string }>;
 
 /**
- * Where the QR code on a Kimono Read leads: the reader asking to be paired,
+ * Where the QR code on a Kimono Reader leads: the reader asking to be paired,
  * and one button to pair it with this account. Without a code (typed from the
  * reader's screen instead), it asks for one.
  */
@@ -31,7 +31,7 @@ export default async function PairPage({ searchParams }: { searchParams: Search 
 
   if (query.done) return <div className="kimono-read">
     <h1>Paired</h1>
-    <p className="lede">Your Kimono Read is yours now. It shows your shelf and keeps your place in Kimono Books.</p>
+    <p className="lede">Your Kimono Reader is yours now. It shows your shelf and keeps your place in Kimono Books.</p>
     <a className="go" href="/books">Open Kimono Books</a>
   </div>;
 
@@ -42,10 +42,10 @@ export default async function PairPage({ searchParams }: { searchParams: Search 
   }
 
   return <div className="kimono-read">
-    <h1>Pair a Kimono Read</h1>
+    <h1>Pair a Kimono Reader</h1>
     {problem ? <p className="admin-notice error" role="alert">{problem}</p> : null}
     {found ? <>
-      <p className="lede">This Kimono Read is asking to be paired with you, {session.user.name || session.user.username}. Check the code matches the one on its screen.</p>
+      <p className="lede">This Kimono Reader is asking to be paired with you, {session.user.name || session.user.username}. Check the code matches the one on its screen.</p>
       <div className="code">{found.code}</div>
       <form action={pair}><input type="hidden" name="code" value={found.code} /><Seal type="submit">Pair with my Kimono</Seal></form>
       <p className="note">It will see your Kimono Books shelf and read your Kimono Drive. You can unpair it from You › Signed-in devices.</p>
