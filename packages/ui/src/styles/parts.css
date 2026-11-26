@@ -5,9 +5,10 @@
    ───────────────────────────────────────────────────────────── */
 
 /* The page header's way back sits before the title, on its baseline row. */
-.k-page-header.k-has-back { align-items: center; justify-content: flex-start; }
-.k-page-header.k-has-back .k-page-header-actions { margin-left: auto; }
-.k-page-header-back { flex: none; }
+/* With a way back or a mark, those lead the title on its row and the actions keep to the right. */
+.k-page-header.k-has-lead { align-items: center; justify-content: flex-start; column-gap: var(--k-space-4); }
+.k-page-header.k-has-lead .k-page-header-actions { margin-left: auto; }
+.k-page-header-back, .k-page-header-mark { flex: none; }
 
 .k-chev { width: 22px; height: 22px; display: block; }
 
@@ -82,7 +83,8 @@
 .k-toast > span { min-width: 0; }
 .k-toast > button {
   flex: none; border: 0; background: none; padding: 4px 0; cursor: pointer;
-  font: 700 14px/20px var(--k-sans); color: var(--k-sakura-soft);
+  font: 700 14px/20px var(--k-sans); color: inherit;
+  text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 2px;
 }
 @media (prefers-reduced-motion: reduce) { .k-toast { transition: opacity var(--k-t-state); transform: translate(-50%, 0); } }
 

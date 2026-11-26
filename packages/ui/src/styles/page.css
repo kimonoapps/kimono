@@ -12,8 +12,9 @@
   padding: var(--k-space-7) 0 var(--k-space-5);
 }
 .k-page-header-copy { min-width: 0; max-width: 64ch; }
-.k-page-header-copy > h1 { margin: 0; font: 600 40px/1.1 var(--k-display); letter-spacing: -.015em; color: var(--k-plum); }
-.k-page-header-copy > p { margin: var(--k-space-3) 0 0; font: 16px/1.5 var(--k-sans); color: var(--k-ink-soft); }
+.k-page-header-copy > h1 { margin: 0; overflow-wrap: anywhere; font: 600 40px/1.1 var(--k-display); letter-spacing: -.015em; color: var(--k-plum); }
+.k-page-header-copy > .k-page-header-description { margin: var(--k-space-3) 0 0; font: 16px/1.5 var(--k-sans); color: var(--k-ink-soft); }
+.k-page-header-eyebrow { margin: 0 0 var(--k-space-1); font: 700 13px/16px var(--k-sans); color: var(--k-on-surface-variant); }
 /* .k-page-header-actions is a seal group; its measure lives in seal.css. */
 
 @media (max-width: 720px) {

@@ -95,13 +95,8 @@
 .dv-linkrow .k-seal-group { margin: 0; flex-wrap: nowrap; gap: 8px; }
 /* the sheet */
 .dv-sheet { min-width: 0; border-radius: var(--k-r-xl); background: var(--k-container-low); overflow: clip; position: relative; }
-.dv-mast { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 18px 32px; padding: 28px var(--dv-gutter) 18px; }
-.dv-mast-id { display: flex; align-items: center; gap: 18px; min-width: 0; }
-.dv-mast-id > div { min-width: 0; }
-.dv-kicker { font: 700 13px/1.4 var(--k-sans); color: var(--k-on-surface-variant); }
-.dv-mast h1 { margin: 2px 0 0; font: 600 34px/1.1 var(--k-display); color: var(--k-plum); letter-spacing: -.015em; overflow-wrap: anywhere; }
-.dv-mast p { margin: 6px 0 0; font-size: 15px; color: var(--k-on-surface-variant); }
-.dv-mast p a { color: var(--k-ink); font-weight: 600; text-decoration: underline; text-decoration-color: var(--k-hair-deep); text-underline-offset: 3px; }
+/* The masthead is Kata's PageHeader (mark, eyebrow, title, members), in Drive's gutter. */
+.dv-mast.k-page-header { padding: 28px var(--dv-gutter) 18px; }
 
 .dv-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; min-height: 64px; padding: 4px var(--dv-gutter) 14px; }
 .dv-crumbs { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 16px; min-width: 0; overflow-wrap: anywhere; }
@@ -110,9 +105,7 @@
 .dv-crumbs span.sep { color: var(--k-hair-deep); }
 .dv-crumbs b { color: var(--k-ink); font-weight: 700; }
 .dv-tools { margin-left: auto; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.dv-search { display: flex; align-items: center; gap: 10px; min-height: 48px; width: 280px; padding: 0 18px; border-radius: var(--k-r-round); background: var(--k-container-highest); color: var(--k-on-surface-variant); font-size: 15px; transition: background-color var(--k-t-state) var(--k-ease-settle); }
-.dv-search:focus-within { background: var(--k-container-high); box-shadow: inset 0 0 0 2px var(--k-app-accent); }
-.dv-search kbd { margin-left: auto; font: 500 11px/1 var(--k-mono); color: var(--k-faint); }
+.dv-search { width: 280px; }
 /* The sort is the kit's dropdown in its compact form: a tonal chip. */
 .dv-select.k-choice { width: auto; min-width: 0; }
 .dv-select .k-choice-button { min-height: 40px; padding: 0 6px 0 14px; gap: 6px; border-radius: var(--k-r-s); background: var(--dv-tone); color: var(--k-on-surface); font-size: 14px; font-weight: 700; }
@@ -204,9 +197,6 @@
 
 /* notices */
 /* the toast is Material's snackbar: inverse surface, one action */
-.dv-toast { position: fixed; z-index: 55; left: 50%; bottom: 24px; translate: -50% 0; width: max-content; max-width: calc(100vw - 32px); display: flex; align-items: center; gap: 18px; padding: 8px 8px 8px 18px; min-height: 52px; border-radius: var(--k-r-m); background: #382e2b; color: #ffede8; box-shadow: var(--k-shadow-raised); font-size: 15px; }
-.dv-toast > span { min-width: 0; overflow-wrap: anywhere; }
-.dv-toast.ok::before { content: ""; flex: none; width: 8px; height: 8px; margin-right: -8px; border-radius: 50%; background: #a9c49a; }
 .dv-notice { margin: 16px 32px 0; padding: 14px 18px; border-radius: var(--k-r-m); background: var(--k-container); font-size: 15px; }
 .dv-notice.warn { background: var(--k-primary-container); color: var(--k-on-primary-container); }
 .dv-notice b { font-weight: 700; }
@@ -426,10 +416,6 @@
 .dv-styles label.on { border-color: var(--k-ink); color: var(--k-ink); font-weight: 600; box-shadow: inset 0 -2px 0 var(--k-ink); }
 
 /* empty states */
-.dv-empty { display: grid; justify-items: center; text-align: center; gap: 10px; padding: 64px 24px; }
-.dv-empty h3 { margin: 0; font: 600 26px/1.2 var(--k-display); color: var(--k-plum); }
-.dv-empty p { margin: 0; max-width: 46ch; color: var(--k-on-surface-variant); font-size: 16px; }
-.dv-empty .k-seal-group { justify-content: center; margin-top: 8px; }
 .dv-states { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 24px; }
 .dv-states > .dv-sheet { padding: 0; }
 .dv-state-label { padding: 10px 16px; border-bottom: 1px solid var(--k-hair); background: var(--k-ground); font: 600 12px/1.4 var(--k-sans); color: var(--k-ink-soft); }
@@ -473,7 +459,6 @@
 .dv-r .nm button:hover b { color: var(--k-plum); }
 .dv-r .nm input { width: 100%; font: 500 16px/1.35 var(--k-sans); padding: 6px 10px; border: 0; border-radius: var(--k-r-s); background: var(--k-container-highest); box-shadow: inset 0 -2px 0 var(--k-app-accent); outline: 0; }
 .dv-check { cursor: pointer; padding: 0; }
-.dv-search input { all: unset; flex: 1; min-width: 0; font-size: 15px; color: var(--k-on-surface); }
 .dv-shade { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 24px; background: rgba(42, 29, 34, .36); }
 .dv-folders-pick { display: grid; max-height: 320px; overflow: auto; padding: 8px 26px; }
 .dv-folders-pick button { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 10px; border: 0; background: transparent; font: inherit; font-weight: 600; text-align: left; cursor: pointer; border-radius: var(--k-r-s); }
@@ -492,7 +477,6 @@
   .dv-drawer { padding: 18px var(--dv-gutter); }
   .dv-drawer-grid { grid-template-columns: 1fr; }
   .dv-uploads { left: 16px; right: 16px; width: auto; max-width: none; }
-  .dv-toast { bottom: 16px; }
 }
 
 /* ── The working page: what the mockup didn't draw. ── */
@@ -523,7 +507,6 @@
 .dv-sorthead i { font-style: normal; font-family: var(--k-mono); }
 
 /* search: the browser's own clear cross is replaced by Escape */
-.dv-search input::-webkit-search-cancel-button { display: none; }
 
 /* drawer */
 .dv-drawer .fp audio { position: absolute; left: 8px; right: 8px; bottom: 8px; width: calc(100% - 16px); }
@@ -559,8 +542,6 @@ button.dv-pick-row:hover b { color: var(--k-plum); }
 /* settings */
 .dv-settings { background: none; box-shadow: none; border: 0; overflow: visible; }
 /* The settings header is the space header: the darker band, with room either side of the crest. */
-.dv-trail { display: flex; align-items: center; gap: 6px; }
-.dv-trail .dv-linkbtn { min-height: 0; padding: 0; font-size: 12px; }
 .dv-sugg { display: grid; max-width: 420px; }
 .dv-sugg button { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 8px 12px; border: 0; border-radius: var(--k-r-m); background: transparent; font: inherit; font-size: 15px; text-align: left; cursor: pointer; }
 .dv-sugg button:hover { background: var(--k-container-high); }
@@ -580,9 +561,7 @@ button.dv-pick-row:hover b { color: var(--k-plum); }
 /* phones: one column of names, everything else under them */
 @media (max-width: 600px) {
   .dv-body { padding: 12px 16px 24px; }
-  .dv-mast { padding-top: 20px; padding-bottom: 18px; gap: 14px; }
-  .dv-mast-id { gap: 14px; }
-  .dv-mast h1 { font-size: 26px; }
+  .dv-mast.k-page-header { padding-top: 20px; padding-bottom: 18px; }
   .dv-mark.lg, .dv-kind.lg { width: 44px; height: 44px; }
   .dv-mast-acts, .dv-mast-acts .k-seal-group { width: 100%; }
   .dv-guestname { flex: 1 1 100%; }
@@ -603,7 +582,6 @@ button.dv-pick-row:hover b { color: var(--k-plum); }
   .dv-dialog > header h2 { font-size: 23px; }
   .dv-dialog-body { padding: 0 18px 16px; }
   .dv-dialog > footer { padding: 14px 18px; }
-  .dv-toast { left: 16px; right: 16px; translate: none; width: auto; max-width: none; }
 }
 
 /* ── to the mockup (design/mockups/m3-everywhere.html, Drive) ──
@@ -611,8 +589,7 @@ button.dv-pick-row:hover b { color: var(--k-plum); }
    soft rows with no header line, People is a word, Upload the one strong seal.
    Recent and Trash are rooms under Drive in the rail. */
 .dv-sheet { background: transparent; border-radius: var(--k-r-s); overflow: visible; }
-.dv-mast { padding: 18px 8px 16px 20px; gap: 18px; }
-.dv-mast h1 { font-size: 36px; }
+.dv-mast.k-page-header { padding: 18px 8px 16px 20px; }
 .dv-mast .dv-members { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
 .dv-mast .dv-members .pfps { display: flex; }
 .dv-mast .dv-members .pfps > * { margin-left: -6px; box-shadow: 0 0 0 2px var(--k-surface); border-radius: 50%; }

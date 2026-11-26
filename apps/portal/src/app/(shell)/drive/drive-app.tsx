@@ -9,7 +9,7 @@ import { useSearchParams } from "next/navigation";
 import { useCrossTo } from "@/components/crossing";
 import { useFileDrop } from "@/components/file-drop";
 import { InkCrest } from "@/components/ink-crest";
-import { AppBloom, Choice, cx, InkBlot, InkPortraitFrame, InkWave, InkLoader, Joint, Seal } from "@kimono/ui";
+import { AppBloom, BackButton, Choice, cx, EmptyState, InkBlot, InkPortraitFrame, InkWave, InkLoader, Joint, PageHeader, Seal, SearchField, Toast as KataToast, type ToastMessage } from "@kimono/ui";
 import { Portrait as Face } from "@/components/portrait";
 import {
   contentUrl, drive, DriveProblem, extension, hasThumb, isText, kindOf, linkUrl, thumbUrl, readableSize, shared, spaceLinkUrl, upload, when,
@@ -146,17 +146,14 @@ function torrentsOut(files: File[], folderId: string, downloads: Downloads | und
 }
 
 function useToast() {
-  const [toast, setToast] = useState<Toast | null>(null);
-  useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(null), 8000); return () => clearTimeout(timer); }, [toast]);
+  const [toast, set] = useState<ToastMessage | null>(null);
+  /* Stamped when raised, so the same words twice still show twice; a change that can be taken back offers Undo. */
+  const setToast = useCallback((next: Toast | null) => set(next ? { text: next.text, at: Date.now(), action: next.undo ? { label: "Undo", onClick: () => void next.undo!() } : undefined } : null), []);
   return [toast, setToast] as const;
 }
 
-function ToastView({ toast, onDone }: { toast: Toast | null; onDone: () => void }) {
-  if (!toast) return null;
-  return <div className="dv-toast" role="status">
-    <span>{toast.text}</span>
-    {toast.undo ? <Seal type="button" tone="quiet" compact onClick={async () => { const undo = toast.undo!; onDone(); await undo(); }}>Undo</Seal> : null}
-  </div>;
+function ToastView({ toast }: { toast: ToastMessage | null }) {
+  return <KataToast toast={toast} />;
 }
 
 /* A guest's name for what they add, remembered on this device. */
@@ -243,7 +240,7 @@ export function DriveApp({ me }: { me: Me }) {
         <button type="button" className="dv-newspace" onClick={() => setMaking(true)}><Icon name="plus" />New space</button>
       </aside>
 
-      {problem && !spaces ? <section className="dv-sheet"><div className="dv-empty"><h3>Drive isn&apos;t answering</h3><p>{problem}</p></div></section>
+      {problem && !spaces ? <section className="dv-sheet"><EmptyState title="Drive isn&apos;t answering">{problem}</EmptyState></section>
         : !spaces ? <section className="dv-sheet"><SkeletonRows rows={6} className="dv-skel" /></section>
         : view === "trash" ? <TrashView onToast={setToast} spaces={spaces} />
         : view === "shared" ? <SpaceView
@@ -275,14 +272,11 @@ export function DriveApp({ me }: { me: Me }) {
             downloads={downloads.ready ? downloads : undefined}
             onToast={setToast}
           />
-        : <section className="dv-sheet"><div className="dv-empty">
-            <h3>No spaces yet</h3>
-            <div className="k-seal-group"><Seal type="button" onClick={() => setMaking(true)}><Icon name="plus" />New space</Seal></div>
-          </div></section>}
+        : <section className="dv-sheet"><EmptyState title="No spaces yet" action={<Seal type="button" onClick={() => setMaking(true)}><Icon name="plus" />New space</Seal>} /></section>}
     </div>
 
     {uploads.uploads.length ? <UploadTray uploads={uploads.uploads} onClear={uploads.clear} onCancel={uploads.cancel} onToast={setToast} /> : null}
-    <ToastView toast={toast} onDone={() => setToast(null)} />
+    <ToastView toast={toast} />
     {making ? <NewSpaceDialog onClose={() => setMaking(false)} onMade={async (space) => { setMaking(false); await loadSpaces(); go({ space: space.id }); }} /> : null}
   </div>;
 }
@@ -313,7 +307,7 @@ export function GuestDrive({ token, space, mark }: { token: string; space: Share
       />
     </div>
     {uploads.uploads.length ? <UploadTray uploads={uploads.uploads} guest onClear={uploads.clear} onCancel={uploads.cancel} onToast={setToast} /> : null}
-    <ToastView toast={toast} onDone={() => setToast(null)} />
+    <ToastView toast={toast} />
   </div>;
 }
 
@@ -407,7 +401,7 @@ function SpaceView({ space, guest = null, room = false, me, folderId, openFile, 
   const [sharing, setSharing] = useState<DriveNode | null>(null);
   const name = useSyncExternalStore(guestName.subscribe, guestName.get, () => "");
   const picker = useRef<HTMLInputElement>(null);
-  const searchField = useRef<HTMLInputElement>(null);
+  const searchField = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLDivElement>(null);
   const pivot = useRef<string | null>(null);
   // A folder opening: its rows rise into place once they've arrived.
@@ -592,7 +586,7 @@ function SpaceView({ space, guest = null, room = false, me, folderId, openFile, 
     const key = event.key;
     const rowId = target.closest<HTMLElement>("[data-row]")?.dataset.row ?? null;
     const index = rowId ? rows.findIndex((n) => n.id === rowId) : -1;
-    if (key === "/" && !mod && !token) { event.preventDefault(); searchField.current?.focus(); return; }
+    if (key === "/" && !mod && !token) { event.preventDefault(); searchField.current?.querySelector("input")?.focus(); return; }
     if (mod && key.toLowerCase() === "a" && rows.length) { event.preventDefault(); setSelected(new Set(rows.map((n) => n.id))); return; }
     if (key === "Escape" && selected.size) { event.preventDefault(); setSelected(new Set()); return; }
     if (!list.current?.contains(target) || !rows.length) return;
@@ -637,20 +631,15 @@ function SpaceView({ space, guest = null, room = false, me, folderId, openFile, 
     onKeyDown={onKeys}
     onKeyUp={(event) => { const target = event.target as HTMLElement; if (event.key === " " && target.closest("[data-row]") && !target.closest("input")) event.preventDefault(); }}
 >
-    <div className="dv-mast">
-      <div className="dv-mast-id">
-        {room ? <Wash icon="people" seed={SHARED} tint={FOLDER_TINT} tone="folder" size="lg" /> : <Mark space={space} size="lg" />}
-        <div>
-          {guest ? <div className="dv-kicker">{canAdd ? "Shared space · you can add files" : "Shared space"}</div> : null}
-          {room && !atTop && folder ? <div className="dv-kicker">{space.name}</div> : null}
-          <h1>{room && !atTop && folder ? (folder.path[1] ?? folder.folder).name : space.name}</h1>
-          {room && !atTop && folder ? <p className="dv-members"><small>{roleWords[roleOf(folder.folder)]}</small></p> : null}
-          {!guest && !room ? <p className="dv-members">
-            <span className="pfps">{members.slice(0, 6).map((m) => <Portrait key={m.username} person={people[m.username.toLowerCase()]} username={m.username} size={26} />)}</span>
-            <small>{space.members === 1 ? "Only you" : `${space.members} people`}{space.role !== "owner" ? ` · ${roleWords[space.role]}` : ""}</small>
-          </p> : null}
-        </div>
-      </div>
+    <PageHeader className="dv-mast"
+      mark={room ? <Wash icon="people" seed={SHARED} tint={FOLDER_TINT} tone="folder" size="lg" /> : <Mark space={space} size="lg" />}
+      eyebrow={guest ? (canAdd ? "Shared space · you can add files" : "Shared space") : room && !atTop && folder ? space.name : null}
+      title={room && !atTop && folder ? (folder.path[1] ?? folder.folder).name : space.name}
+      description={room && !atTop && folder ? <span className="dv-members"><small>{roleWords[roleOf(folder.folder)]}</small></span>
+        : !guest && !room ? <span className="dv-members">
+          <span className="pfps">{members.slice(0, 6).map((m) => <Portrait key={m.username} person={people[m.username.toLowerCase()]} username={m.username} size={26} />)}</span>
+          <small>{space.members === 1 ? "Only you" : `${space.members} people`}{space.role !== "owner" ? ` · ${roleWords[space.role]}` : ""}</small>
+        </span> : null}>
       <div className="dv-mast-acts">
         {guest && canAdd ? <label className="k-field dv-guestname"><span>Your name</span>
           <input value={name} maxLength={60} autoComplete="name" onChange={(e) => guestName.set(e.target.value)} />
@@ -666,7 +655,7 @@ function SpaceView({ space, guest = null, room = false, me, folderId, openFile, 
           event.target.value = "";
         }} /> : null}
       </div>
-    </div>
+    </PageHeader>
 
     {chosen.length ? <div className="dv-selbar">
       <div className="count">
@@ -689,20 +678,15 @@ function SpaceView({ space, guest = null, room = false, me, folderId, openFile, 
           : <Fragment key={node.id}><button type="button" onClick={() => openFolder(node.id)}>{index === 0 ? space.name : node.name}</button><span className="sep">/</span></Fragment>)}
       </div> : null}
       <div className="dv-tools">
-        {!guest && !room ? <label className="dv-search"><Icon name="search" />
-          <input ref={searchField} type="search" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape") setQuery(""); }} placeholder="Search this space" aria-label="Search this space" />
-        </label> : null}
+        {!guest && !room ? <div ref={searchField} className="dv-search"><SearchField value={query} onChange={setQuery} onKeyDown={(e) => { if (e.key === "Escape") setQuery(""); }} placeholder="Search this space" /></div> : null}
         <Choice compact className="dv-select" aria-label="Sort by" value={sort} onChange={(next) => setSort(next as Sort)} options={[{ value: "name", label: "Name, A–Z" }, { value: "modified", label: "Newest first" }, { value: "size", label: "Largest first" }]} />
       </div>
     </div>}
 
     <div className={cx("dv-list", guest && "guest")} ref={list}>
-      {problem ? <div className="dv-empty"><p>{problem}</p></div>
+      {problem ? <EmptyState title="That didn&apos;t open">{problem}</EmptyState>
         : !folder ? <FolderSkeleton />
-        : !rows.length && !fetching.length ? <div className="dv-empty">
-            <h3>{found ? "Nothing by that name" : "Nothing here yet"}</h3>
-            {!found && canAdd ? <p>Drop files here, or upload them.</p> : null}
-          </div>
+        : !rows.length && !fetching.length ? <EmptyState title={found ? "Nothing by that name" : "Nothing here yet"}>{!found && canAdd ? "Drop files here, or upload them." : null}</EmptyState>
         : <>{fetching.map((d) => <div className={cx("dv-r", "dv-fetch", d.state === "failed" && "bad")} key={d.id} data-fetch={d.id}>
             <span />
             <span className="dv-kind typed"><Icon name="download" /></span>
@@ -1059,8 +1043,8 @@ function ShareDialog({ node, me, people, canEdit, onClose }: { node: DriveNode; 
   </>}>
     {info === null && !problem ? <SkeletonRows rows={2} /> : null}
     {info && canEdit ? <div className="dv-share-add">
-      <label className="dv-search dv-share-find"><Icon name="search" /><input autoFocus value={find} onChange={(event) => setFind(event.target.value)} placeholder="Add people" aria-label="Add people"
-        onKeyDown={(event) => { if (event.key === "Enter" && found[0]) { event.preventDefault(); pick(found[0]); } }} /></label>
+      <SearchField className="dv-share-find" autoFocus value={find} onChange={setFind} placeholder="Add people"
+        onKeyDown={(event) => { if (event.key === "Enter" && found[0]) { event.preventDefault(); pick(found[0]); } }} />
       {words ? <div className="dv-found" role="listbox" aria-label="People">
         {found.map((p) => <button key={p.username} type="button" role="option" aria-selected={false} onClick={() => pick(p)}>
           <Portrait person={p} username={p.username} size={32} /><span><b>{p.name}</b><small>@{p.username}</small></span>
@@ -1194,15 +1178,9 @@ function SettingsView({ space, me, people, onChanged, onLeft, back }: { space: S
 
   return <section className="dv-sheet dv-settings">
     <div className="k-tray">
-      <div className="dv-mast">
-        <div className="dv-mast-id">
-          <Mark space={detail ? { ...detail, code: space.code, notes: space.notes } : space} size="lg" />
-          <div>
-            <div className="dv-kicker dv-trail"><button type="button" className="dv-linkbtn" onClick={back}>{space.name}</button><span>/</span><span>Settings</span></div>
-            <h1>People and settings</h1>
-          </div>
-        </div>
-      </div>
+      <PageHeader className="dv-mast" back={<BackButton label={`Back to ${space.name}`} onClick={back} />}
+        mark={<Mark space={detail ? { ...detail, code: space.code, notes: space.notes } : space} size="lg" />}
+        eyebrow={space.name} title="People and settings" />
       {problem ? <p className="admin-notice error" role="alert">{problem}</p> : notice ? <p className="admin-notice success" role="status">{notice}</p> : null}
 
       <div className="k-compartment"><div className="k-tab"><h2>People</h2></div><div className="k-body">
@@ -1299,11 +1277,11 @@ function TrashView({ spaces, onToast }: { spaces: Space[]; onToast: (toast: Toas
     return () => { live = false; };
   }, []);
   return <section className="dv-sheet">
-    <div className="dv-mast"><div className="dv-mast-id"><Wash icon="trash" seed="trash" tint={FOLDER_TINT} tone="folder" size="lg" /><div><div className="dv-kicker">Across your spaces</div><h1>Trash</h1><p>Kept for 30 days.</p></div></div>
+    <PageHeader className="dv-mast" mark={<Wash icon="trash" seed="trash" tint={FOLDER_TINT} tone="folder" size="lg" />} eyebrow="Across your spaces" title="Trash" description="Kept for 30 days.">
       {removable.length ? <Seal type="button" tone="danger" compact busy={emptying === "busy"} disabled={emptying === "busy"} onClick={() => setEmptying("ask")}><Icon name="trash" />Empty Trash</Seal> : null}
-    </div>
+    </PageHeader>
     <div className="dv-list">
-      {!items ? <SkeletonRows rows={5} /> : !items.length ? <div className="dv-empty"><h3>Nothing in the Trash</h3></div>
+      {!items ? <SkeletonRows rows={5} /> : !items.length ? <EmptyState title="Nothing in the Trash" />
         : items.map((node) => {
           const space = spaceOf(node.spaceId);
           const left = node.trashedAt ? Math.max(0, 30 - Math.floor((now - node.trashedAt) / 86400000)) : null;
@@ -1341,9 +1319,9 @@ function RecentView({ spaces, people, onOpen }: { spaces: Space[]; people: Recor
   useEffect(() => { void drive.recent().then(setItems).catch(() => setItems([])); }, []);
   const spaceName = (id: string) => spaces.find((s) => s.id === id)?.name ?? "";
   return <section className="dv-sheet">
-    <div className="dv-mast"><div className="dv-mast-id"><Wash icon="clock" seed="recent" tint={FOLDER_TINT} tone="folder" size="lg" /><div><div className="dv-kicker">Across your spaces</div><h1>Recent</h1></div></div></div>
+    <PageHeader className="dv-mast" mark={<Wash icon="clock" seed="recent" tint={FOLDER_TINT} tone="folder" size="lg" />} eyebrow="Across your spaces" title="Recent" />
     <div className="dv-list">
-      {!items ? <SkeletonRows rows={5} /> : !items.length ? <div className="dv-empty"><h3>Nothing yet</h3></div>
+      {!items ? <SkeletonRows rows={5} /> : !items.length ? <EmptyState title="Nothing yet" />
         : items.map((node) => <div className="dv-r recent" key={node.id}>
             <Kind node={node} />
             <div className="nm"><button type="button" onClick={() => onOpen(node)}><b>{node.name}</b><small>{spaceName(node.spaceId)}<span className="dv-m"> · {readableSize(node.size)}</span></small></button></div>
