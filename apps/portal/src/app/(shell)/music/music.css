@@ -27,21 +27,11 @@
   backdrop-filter: blur(12px);
 }
 .km-top-start { display: flex; align-items: center; gap: 4px; flex: none; margin-right: auto; }
-.km-back .km-icon { width: 22px; height: 22px; }
 .km-brand { display: inline-flex; align-items: center; padding: 6px 10px 6px 4px; border-radius: var(--k-r-l); transition: background var(--k-t-state); }
 .km-brand:hover { background: var(--k-container); text-decoration: none !important; }
 /* Home and You beside the name; search on the right. */
-.km-search {
-  flex: 0 1 440px; min-width: 200px; display: flex; align-items: center; gap: 10px;
-  height: 48px; padding: 0 16px; border-radius: var(--k-r-full);
-  background: var(--k-container-high); color: var(--k-on-surface-variant);
-  transition: background var(--k-t-state) var(--k-ease-settle);
-}
-.km-search:focus-within { background: var(--k-container-highest); box-shadow: 0 0 0 2px var(--k-accent); }
-.km-search svg { width: 22px; height: 22px; fill: currentColor; flex: none; }
-.km-search input { flex: 1; min-width: 0; border: 0; background: none; outline: 0; font: 400 16px/24px var(--k-sans); color: var(--k-on-surface); }
-.km-search input::placeholder { color: var(--k-on-surface-variant); }
-.km-search input::-webkit-search-cancel-button { filter: grayscale(1); }
+/* Search is Kata's field, Music's width. */
+.km-search { flex: 0 1 440px; min-width: 200px; }
 .km-tabs { display: flex; gap: 4px; margin-left: var(--k-space-3); }
 .km-tabs a { padding: 10px 16px; border-radius: var(--k-r-full); font: 700 14px/20px var(--k-sans); color: var(--k-on-surface-variant); }
 .km-tabs a:hover { text-decoration: none; background: var(--k-container); color: var(--k-on-surface); }
@@ -181,23 +171,10 @@
 
 /* ── Shelves and cards ────────────────────────────────────────────────── */
 
-.km-shelf header, .km-chart header { display: flex; align-items: baseline; justify-content: space-between; gap: var(--k-space-3); margin-bottom: var(--k-space-3); }
-.km-shelf-all { font: 700 14px/20px var(--k-sans); color: var(--k-on-surface-variant) !important; }
-.km-shelf-end { display: flex; align-items: center; gap: var(--k-space-3); }
-/* Back and More over a sideways row: only for a pointer; a finger swipes. */
-.km-turn { display: flex; gap: 4px; }
-.km-turn .km-iconbtn:disabled { opacity: .35; cursor: default; background: none; }
-.km-turn-more .km-icon { transform: scaleX(-1); }
-@media (hover: none) { .km-turn { display: none; } }
-.km-friends-head { display: flex; align-items: center; justify-content: space-between; gap: var(--k-space-3); margin-bottom: var(--k-space-3); }
-.km-friends-head .k-heading { margin: 0; }
-.km-shelf-row {
-  display: grid; grid-auto-flow: column; grid-auto-columns: 176px; gap: var(--k-space-4);
-  overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain;
-  margin: 0 calc(-1 * var(--km-gutter)); padding: 4px var(--km-gutter) 12px; scroll-padding: 0 var(--km-gutter);
-  scrollbar-width: none;
-}
-.km-shelf-row::-webkit-scrollbar { display: none; }
+/* A shelf is Kata's Carousel, out to the page's edges, the arrows on the covers. */
+.km-shelf-row { margin: 0 calc(-1 * var(--km-gutter)); --k-carousel-pad: var(--km-gutter); --km-card: 176px; --k-carousel-arrow-top: calc(4px + var(--km-card) / 2); }
+.km-shelf-row .k-carousel-rail { gap: var(--k-space-4); padding-bottom: 12px; }
+.km-shelf-row .k-carousel-rail > * { width: var(--km-card); }
 .km-card { position: relative; display: grid; align-content: start; gap: 4px; scroll-snap-align: start; padding: 10px; margin: -10px; border-radius: var(--k-r-l); transition: background var(--k-t-state) var(--k-ease-settle); }
 .km-card:hover { background: var(--k-container-low); }
 .km-card-link { display: grid; gap: 4px; min-width: 0; }
@@ -262,8 +239,9 @@
 .km-quick-liked .km-quick-art .km-icon { width: 26px; height: 26px; }
 
 /* Friends: who, what they're on, when. */
-.km-friends-row { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(260px, 300px); gap: var(--k-space-3); overflow-x: auto; scrollbar-width: none; margin: 0 calc(-1 * var(--km-gutter)); padding: 2px var(--km-gutter) 8px; scroll-snap-type: x mandatory; }
-.km-friends-row::-webkit-scrollbar { display: none; }
+.km-friends-row { margin: 0 calc(-1 * var(--km-gutter)); --k-carousel-pad: var(--km-gutter); }
+.km-friends-row .k-carousel-rail { gap: var(--k-space-3); padding-top: 2px; padding-bottom: 8px; }
+.km-friends-row .k-carousel-rail > * { width: 280px; }
 .km-friend { display: grid; gap: 10px; padding: 12px; border-radius: var(--k-r-l); background: var(--k-container-low); scroll-snap-align: start; }
 .km-friend-who { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .km-friend-who:hover { text-decoration: none !important; }
@@ -283,7 +261,6 @@
 .km-you-portrait { width: auto; }
 .km-you-head .km-tags { margin-top: 2px; }
 .km-you-profile { display: inline-flex; align-items: center; margin: 0; text-decoration: none !important; }
-.km-section-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: var(--k-space-3); }
 .km-liked-card .km-liked-art, .km-new-art { aspect-ratio: 1; border-radius: var(--k-r-m); }
 .km-liked-card .km-liked-art .km-icon { width: 34%; height: 34%; }
 .km-new-card { border: 0; background: none; color: inherit; text-align: left; font: inherit; cursor: pointer; }
@@ -484,7 +461,7 @@
   .km-song-album, .km-song-time { display: none; }
   .km-song .km-iconbtn { opacity: 1; }
   .km-chart-songs { columns: 1; }
-  .km-shelf-row { grid-auto-columns: 148px; }
+  .km-shelf-row { --km-card: 148px; }
   .km-jump-grid { grid-template-columns: 1fr 1fr; }
   .km-quick { grid-template-columns: 1fr 1fr; gap: 8px; }
   .km-quick-tile { height: 56px; font-size: 13px; }
@@ -689,7 +666,9 @@ html:has(.km-np-in)::-webkit-scrollbar { display: none; }
 .km-duo.is-single { display: contents; }
 @media (min-width: 900px) {
   .km-duo:not(.is-single) { grid-template-columns: 240px minmax(0, 1fr); column-gap: 40px; align-items: start; }
-  .km-duo:not(.is-single) > .km-shelf .km-shelf-row { display: grid; grid-auto-flow: row; gap: 16px; overflow: visible; }
+  .km-duo:not(.is-single) > .km-shelf .km-shelf-row { margin: 0; }
+  .km-duo:not(.is-single) > .km-shelf .km-shelf-row .k-carousel-rail { display: grid; grid-auto-flow: row; gap: 16px; overflow: visible; padding: 0; }
+  .km-duo:not(.is-single) > .km-shelf .km-shelf-row .k-carousel-arrow { display: none; }
   .km-duo:not(.is-single) > .km-shelf .km-card { width: 240px; max-width: none; }
   .km-duo:not(.is-single) > .km-shelf .km-card-art { width: 240px; height: 240px; }
 }

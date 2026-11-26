@@ -3,7 +3,7 @@
 import { Crossing, useCrossTo } from "@/components/crossing";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { AppLockup, cx, InkPortraitFrame, Seal, type AppIdentity } from "@kimono/ui";
+import { AppLockup, cx, InkPortraitFrame, Seal, type AppIdentity, BackButton, Carousel, PageHeader, SearchField, SectionHeader } from "@kimono/ui";
 import { useTabTitle } from "@/components/tab-title";
 import { ago, byline, clock, forget, hrefOf, length, musicApi, share, songKeyOf, useMusic, type Album, type FriendListening, type Person, type PlaylistPage, type Track } from "./api";
 import { InkSheet } from "@/components/ink-sheet";
@@ -11,7 +11,7 @@ import { ImportSheet } from "./import-ui";
 import { askName, askSure } from "./ask";
 import { Icon } from "./icons";
 import { Portrait } from "@/components/portrait";
-import { AddToPlaylist, AlbumCard, ArtistCard, Bars, Cover, Head, Loading, MoreButton, Mosaic, PlayActions, playlistItems, Problem, RateMarks, SetCard, Shelf, Songs, useRowTurn } from "./parts";
+import { AddToPlaylist, AlbumCard, ArtistCard, Bars, Cover, Head, Loading, MoreButton, Mosaic, PlayActions, playlistItems, Problem, RateMarks, SetCard, Shelf, Songs } from "./parts";
 import { RecommendSheet } from "../account/friends/friends-ui";
 import { Faces, useFriendParties, useParty } from "./party-ui";
 import { usePlayer } from "./player";
@@ -32,11 +32,10 @@ export function TopBar({ app }: { app: AppIdentity }) {
   /* Leaving search empties the field (set while drawing, as React has it for a change from outside). */
   const [wasSearch, setWasSearch] = useState(onSearch);
   if (wasSearch !== onSearch) { setWasSearch(onSearch); if (!onSearch) setText(""); }
-  const input = useRef<HTMLInputElement>(null);
   useEffect(() => {
     const slash = (e: KeyboardEvent) => {
       const el = document.activeElement;
-      if (e.key === "/" && el?.tagName !== "INPUT" && el?.tagName !== "TEXTAREA") { e.preventDefault(); input.current?.focus(); }
+      if (e.key === "/" && el?.tagName !== "INPUT" && el?.tagName !== "TEXTAREA") { e.preventDefault(); document.querySelector<HTMLInputElement>(".km-search input")?.focus(); }
     };
     addEventListener("keydown", slash);
     return () => removeEventListener("keydown", slash);
@@ -59,19 +58,15 @@ export function TopBar({ app }: { app: AppIdentity }) {
   }, [text]);
   return <div className="km-top">
     <div className="km-top-start">
-      {home ? null : <button type="button" className="km-iconbtn km-back" data-nav-back aria-label="Back"
-        onClick={() => { if (steps.current > 0) { steps.current -= 2; history.back(); } else crossTo("kakejiku", "/music"); }}><Icon name="back" /></button>}
+      {home ? null : <BackButton className="km-back" onClick={() => { if (steps.current > 0) { steps.current -= 2; history.back(); } else crossTo("kakejiku", "/music"); }} />}
       <Crossing kind="kakejiku" href="/music" className="km-brand" aria-label="Kimono Music, home"><AppLockup identity={app} /></Crossing>
       <nav className="km-tabs" aria-label="Music">
         <Crossing kind="kakejiku" href="/music" aria-current={path === "/music" ? "page" : undefined}>Home</Crossing>
         <Crossing kind="kakejiku" href="/music/you" aria-current={path === "/music/you" ? "page" : undefined}>You</Crossing>
       </nav>
     </div>
-    <label className="km-search">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" /></svg>
-      <input ref={input} type="search" value={text} onChange={(e) => setText(e.target.value)} placeholder="Songs, albums, artists" aria-label="Search Music"
-        onKeyDown={(e) => { if (e.key === "Escape") { setText(""); input.current?.blur(); } }} />
-    </label>
+    <SearchField className="km-search" value={text} onChange={setText} placeholder="Songs, albums, artists" label="Search Music"
+      onKeyDown={(e) => { if (e.key === "Escape") { setText(""); e.currentTarget.blur(); } }} />
   </div>;
 }
 
@@ -89,7 +84,7 @@ export function HomeView() {
   const first = p.you.name.split(/\s+/)[0];
   const personal = home.listenAgain.length >= 6;
   const chart = <section className="km-chart">
-    <header><h2 className="k-heading">{personal ? "Popular right now" : home.charts.title}</h2><Crossing kind="kakejiku" className="km-shelf-all" href={hrefOf.mix("chart")}>Show all</Crossing></header>
+    <SectionHeader title={personal ? "Popular right now" : home.charts.title}><Crossing kind="kakejiku" className="k-see-all" href={hrefOf.mix("chart")}>See all</Crossing></SectionHeader>
     <Songs tracks={home.charts.items.slice(0, 10)} source={{ kind: "mix", id: "chart", title: home.charts.title }} numbered className="km-chart-songs" />
   </section>;
   return <div className="km-page km-home">
@@ -142,7 +137,7 @@ export function HomeView() {
     </Shelf> : null}
 
     {home.genres.length ? <section className="km-genres">
-      <h2 className="k-heading">Genres</h2>
+      <SectionHeader title="Genres" />
       <div className="km-genre-grid">
         {home.genres.map((g) => <Crossing kind="kakejiku" key={g.id} href={hrefOf.genre(g.id)} className="km-genre"><span>{g.name}</span>{g.picture ? <Cover src={g.picture} className="km-genre-art" /> : null}</Crossing>)}
       </div>
@@ -214,10 +209,9 @@ function FriendsListening({ friends }: { friends: FriendListening[] }) {
   const party = useParty();
   /* The party a friend is in (or hosts), if you can join it. */
   const partyOf = (u: string) => parties.find((x) => x.host.username === u || x.members.some((m) => m.username === u));
-  const row = useRowTurn<HTMLDivElement>();
   return <section className="km-friends">
-    <header className="km-friends-head"><h2 className="k-heading">Friends</h2>{row.buttons}</header>
-    <div className="km-friends-row" ref={row.ref}>
+    <SectionHeader title="Friends" />
+    <Carousel label="Friends listening" className="km-friends-row">
       {friends.map((f) => <div key={f.username} className={cx("km-friend", f.live && "km-live")}>
         <Crossing kind="kakejiku" href={`/account/people/${encodeURIComponent(f.username)}`} className="km-friend-who">
           <InkPortraitFrame seed={f.username} weight={3}><Portrait name={f.name} username={f.username} picture={f.picture} size={44} /></InkPortraitFrame>
@@ -230,7 +224,7 @@ function FriendsListening({ friends }: { friends: FriendListening[] }) {
         {partyOf(f.username) && party.view?.id !== partyOf(f.username)!.id
           ? <Crossing kind="kakejiku" href={`/music/party/${partyOf(f.username)!.id}`} className="km-friend-join"><Icon name="play" />Listen along</Crossing> : null}
       </div>)}
-    </div>
+    </Carousel>
   </section>;
 }
 
@@ -283,7 +277,7 @@ export function SearchView() {
     return <div className={cx("km-page km-results", stale && "is-stale")} aria-busy={stale || undefined}>
       <div className="km-results-top">
         <section className="km-best">
-          <h2 className="k-heading">Genre</h2>
+          <SectionHeader title="Genre" />
           <div className="km-best-card">
             <span className="km-best-name">{g.title}</span>
             <span className="km-card-sub">{g.artists.slice(0, 3).map((a) => a.name).join(", ") || `${g.tracks.length} songs`}</span>
@@ -291,21 +285,21 @@ export function SearchView() {
           </div>
         </section>
         <section className="km-results-songs">
-          <h2 className="k-heading">Songs</h2>
+          <SectionHeader title="Songs" />
           <Songs tracks={g.tracks.slice(0, 6)} source={gs} album={false} />
         </section>
       </div>
       {g.artists.length ? <Shelf title="Artists">{g.artists.map((a) => <ArtistCard key={a.key} artist={a} />)}</Shelf> : null}
-      {g.tracks.length > 6 ? <section><h2 className="k-heading">More {g.title}</h2><Songs tracks={g.tracks.slice(6)} source={gs} /></section> : null}
+      {g.tracks.length > 6 ? <section><SectionHeader title={<>More {g.title}</>} /><Songs tracks={g.tracks.slice(6)} source={gs} /></section> : null}
       {data.albums.length ? <Shelf title="Albums">{data.albums.map((a) => <AlbumCard key={a.key} album={a} />)}</Shelf> : null}
-      {data.tracks.length ? <section><h2 className="k-heading">Named “{q}”</h2><Songs tracks={data.tracks.slice(0, 10)} source={{ kind: "search", id: q, title: `“${q}”` }} /></section> : null}
+      {data.tracks.length ? <section><SectionHeader title={<>Named “{q}”</>} /><Songs tracks={data.tracks.slice(0, 10)} source={{ kind: "search", id: q, title: `“${q}”` }} /></section> : null}
     </div>;
   }
   const top = data.artists[0];
   return <div className={cx("km-page km-results", stale && "is-stale")} aria-busy={stale || undefined}>
     <div className="km-results-top">
       {top ? <section className="km-best">
-        <h2 className="k-heading">Top result</h2>
+        <SectionHeader title="Top result" />
         <Crossing kind="kakejiku" href={hrefOf.artist(top.key)} className="km-best-card">
           <Cover src={top.picture} round size={112} />
           <span className="km-best-name">{top.name}</span>
@@ -313,13 +307,13 @@ export function SearchView() {
         </Crossing>
       </section> : null}
       {data.tracks.length ? <section className="km-results-songs">
-        <h2 className="k-heading">Songs</h2>
+        <SectionHeader title="Songs" />
         <Songs tracks={data.tracks.slice(0, 6)} source={{ kind: "search", id: q, title: `“${q}”` }} album={false} />
       </section> : null}
     </div>
     {data.artists.length > 1 ? <Shelf title="Artists">{data.artists.map((a) => <ArtistCard key={a.key} artist={a} />)}</Shelf> : null}
     {data.albums.length ? <Shelf title="Albums">{data.albums.map((a) => <AlbumCard key={a.key} album={a} />)}</Shelf> : null}
-    {data.tracks.length > 6 ? <section><h2 className="k-heading">More songs</h2><Songs tracks={data.tracks.slice(6)} source={{ kind: "search", id: q, title: `“${q}”` }} /></section> : null}
+    {data.tracks.length > 6 ? <section><SectionHeader title="More songs" /><Songs tracks={data.tracks.slice(6)} source={{ kind: "search", id: q, title: `“${q}”` }} /></section> : null}
   </div>;
 }
 
@@ -350,7 +344,7 @@ export function ArtistView({ id }: { id: string }) {
       <RateMarks kind="artist" keyOf={key} />
     </Head>
     {top.length ? <section>
-      <h2 className="k-heading">Popular</h2>
+      <SectionHeader title="Popular" />
       <Songs tracks={more ? top : top.slice(0, 5)} source={source} numbered album={false} />
       {top.length > 5 ? <button type="button" className="km-textbtn" onClick={() => setMore(!more)}>{more ? "Show less" : "Show more"}</button> : null}
     </section> : null}
@@ -426,18 +420,18 @@ export function SongView({ id }: { id: string }) {
     {sending ? <RecommendSheet item={{ app: "music", itemId: t.key, title: t.title, subtitle: byline(t), cover: t.album?.cover ?? null }} onClose={() => setSending(false)} onSent={p.say} /> : null}
 
     {words.some((w) => w.trim()) ? <section className="km-song-words">
-      <h2 className="k-heading">Lyrics</h2>
+      <SectionHeader title="Lyrics" />
       <div className={cx("km-words", !allWords && "km-words-short")}>{(allWords ? words : words.slice(0, 12)).map((w, i) => <p key={i}>{w || "\u00a0"}</p>)}</div>
       {words.length > 12 ? <button type="button" className="km-textbtn" onClick={() => setAllWords(!allWords)}>{allWords ? "Show less" : "Show all"}</button> : null}
     </section> : null}
 
     {album && album.album.tracks.length > 1 ? <section>
-      <header className="km-section-head"><h2 className="k-heading">From {album.album.title}</h2><Crossing kind="kakejiku" className="km-shelf-all" href={hrefOf.album(album.album.key)}>Show album</Crossing></header>
+      <SectionHeader title={<>From {album.album.title}</>}><Crossing kind="kakejiku" className="k-see-all" href={hrefOf.album(album.album.key)}>See album</Crossing></SectionHeader>
       <Songs tracks={album.album.tracks} source={{ kind: "album", id: album.album.key, title: album.album.title }} numbered art={false} album={false} />
     </section> : null}
 
     {more.length && t.artists[0] ? <section>
-      <header className="km-section-head"><h2 className="k-heading">More by {t.artists[0].name}</h2><Crossing kind="kakejiku" className="km-shelf-all" href={hrefOf.artist(t.artists[0].key)}>Show artist</Crossing></header>
+      <SectionHeader title={<>More by {t.artists[0].name}</>}><Crossing kind="kakejiku" className="k-see-all" href={hrefOf.artist(t.artists[0].key)}>See artist</Crossing></SectionHeader>
       <Songs tracks={more} source={{ kind: "artist", id: t.artists[0].key, title: t.artists[0].name }} album={false} />
     </section> : null}
   </div>;
@@ -543,7 +537,7 @@ export function GenreView({ id }: { id: number }) {
     <Head kind="Genre" title={data.genre.name} art={<Cover src={data.genre.picture} className="km-head-cover" />}>
       <PlayActions tracks={data.tracks} source={source} />
     </Head>
-    <section><h2 className="k-heading">Top songs</h2><Songs tracks={data.tracks.slice(0, 20)} source={source} numbered /></section>
+    <section><SectionHeader title="Top songs" /><Songs tracks={data.tracks.slice(0, 20)} source={source} numbered /></section>
     {data.artists.length ? <Shelf title="Artists">{data.artists.map((a) => <ArtistCard key={a.key} artist={a} />)}</Shelf> : null}
     {data.albums.length ? <Shelf title="Albums">{data.albums.map((a) => <AlbumCard key={a.key} album={a} />)}</Shelf> : null}
   </div>;
@@ -605,7 +599,7 @@ export function YouView() {
     </header>
 
     <section>
-      <h2 className="k-heading">Playlists</h2>
+      <SectionHeader title="Playlists" />
       <div className="km-grid km-you-lists">
         <Crossing kind="kakejiku" href="/music/liked" className="km-card km-card-link km-liked-card">
           <span className="km-card-pic km-liked-art"><Icon name="love" /></span>
@@ -626,19 +620,19 @@ export function YouView() {
     </section>
 
     {me.onRepeat.length ? <section>
-      <h2 className="k-heading">On repeat</h2>
+      <SectionHeader title="On repeat" />
       <Songs tracks={me.onRepeat.slice(0, 6)} source={{ kind: "repeat", id: "me", title: "On repeat" }} numbered album={false} className="km-chart-songs" />
     </section> : null}
 
     {me.artists.length ? <Shelf title="Your top artists">{me.artists.map((a) => <ArtistCard key={a.key} artist={a} />)}</Shelf> : null}
 
     {me.recent.length ? <section>
-      <header className="km-section-head"><h2 className="k-heading">Recently played</h2><Crossing kind="kakejiku" className="km-shelf-all" href="/music/history">Show all</Crossing></header>
+      <SectionHeader title="Recently played"><Crossing kind="kakejiku" className="k-see-all" href="/music/history">See all</Crossing></SectionHeader>
       <Songs tracks={me.recent.slice(0, 6)} source={{ kind: "history", id: "recent", title: "Recently played" }} />
     </section> : null}
 
     {friends?.length ? <FriendsListening friends={friends} /> : <section className="km-friends-none">
-      <h2 className="k-heading">Friends</h2>
+      <SectionHeader title="Friends" />
       <p className="km-quiet">See what your friends are listening to.</p>
       <Crossing kind="kakejiku" href="/account/friends" className="km-textbtn">Find friends</Crossing>
     </section>}
@@ -666,7 +660,7 @@ export function HistoryView() {
   if (error) return <Problem text={error} onRetry={retry} />;
   if (!data) return <Loading />;
   return <div className="km-page">
-    <h1 className="km-page-title">Recently played</h1>
+    <PageHeader title="Recently played" />
     {data.length ? <Songs tracks={data as Track[]} source={{ kind: "history", id: "recent", title: "Recently played" }} /> : <p className="km-quiet">What you play will be here.</p>}
   </div>;
 }

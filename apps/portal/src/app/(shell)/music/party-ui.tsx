@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { cx, InkPortraitFrame, Seal } from "@kimono/ui";
+import { cx, InkPortraitFrame, Seal, SectionHeader } from "@kimono/ui";
 import { Portrait } from "@/components/portrait";
 import { useCrossTo } from "@/components/crossing";
 import type { ChatLine, PartyView } from "@/lib/music/party";
@@ -241,7 +241,7 @@ function PartyDock() {
     {party.open ? <aside className="km-party" aria-label="Listen party">
       <header>
         <div>
-          <h2 className="k-heading">Listening together</h2>
+          <SectionHeader title="Listening together" />
           <p className="km-party-host">{mine ? "Your party" : `${host.name.split(/\s+/)[0]}'s party`}{song ? <> · {song.title}</> : null}</p>
         </div>
         <button type="button" className="km-iconbtn" aria-label="Close" onClick={() => party.setOpen(false)}><Icon name="close" /></button>
@@ -315,7 +315,7 @@ export function PartyPageView({ id }: { id: string }) {
       </div>
     </header>
     {v.tracks.length > v.index + 1 ? <section>
-      <h2 className="k-heading">Up next</h2>
+      <SectionHeader title="Up next" />
       <ol className="km-party-next">{v.tracks.slice(v.index + 1, v.index + 21).map((t, i) => <li key={`${t.key}-${i}`}><Cover src={t.album?.cover} size={44} /><span><b>{t.title}</b><small>{byline(t)}</small></span></li>)}</ol>
     </section> : null}
   </div>;

@@ -3,7 +3,7 @@
 import { Crossing, useCrossTo } from "@/components/crossing";
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { blotPath, cx, inkRandom, MorphLoader, ringPath, Seal } from "@kimono/ui";
+import { blotPath, cx, inkRandom, MorphLoader, ringPath, Seal, Carousel, EmptyState, SectionHeader } from "@kimono/ui";
 import { byline, clock, forget, hrefOf, musicApi, share, type Album, type Artist, type Playlist, type RatedKind, type Rating, type Track } from "./api";
 import { musicGold } from "@/lib/music/model";
 import { askName } from "./ask";
@@ -38,7 +38,7 @@ export function Loading() {
 }
 
 export function Problem({ text, onRetry }: { text: string; onRetry?: () => void }) {
-  return <div className="km-problem"><p>{text}</p>{onRetry ? <Seal tone="quiet" compact onClick={onRetry}>Try again</Seal> : null}</div>;
+  return <EmptyState className="km-problem" title={text} action={onRetry ? <Seal tone="quiet" compact onClick={onRetry}>Try again</Seal> : null} />;
 }
 
 /* ── Ratings ───────────────────────────────────────────────────────────── */
@@ -249,40 +249,11 @@ export function Bars() {
 
 /* ── Cards ─────────────────────────────────────────────────────────────── */
 
-/** A row of things to scroll sideways, under a name. */
-/** Back and More for a row that runs sideways: a mouse wheel can't reach a hidden scrollbar. Each press turns a window's worth. */
-export function useRowTurn<T extends HTMLElement>() {
-  const ref = useRef<T>(null);
-  const [can, setCan] = useState({ back: false, more: false });
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const measure = () => setCan({ back: el.scrollLeft > 4, more: el.scrollLeft + el.clientWidth < el.scrollWidth - 4 });
-    measure();
-    el.addEventListener("scroll", measure, { passive: true });
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    for (const c of Array.from(el.children)) ro.observe(c);
-    return () => { el.removeEventListener("scroll", measure); ro.disconnect(); };
-  }, []);
-  const turn = (by: 1 | -1) => {
-    const el = ref.current;
-    if (!el) return;
-    const pad = parseFloat(getComputedStyle(el).scrollPaddingLeft || "0") * 2;
-    el.scrollBy({ left: by * Math.max(160, el.clientWidth - pad), behavior: "smooth" });
-  };
-  const buttons = can.back || can.more ? <span className="km-turn">
-    <button type="button" className="km-iconbtn" aria-label="Back" disabled={!can.back} onClick={() => turn(-1)}><Icon name="back" /></button>
-    <button type="button" className="km-iconbtn km-turn-more" aria-label="More" disabled={!can.more} onClick={() => turn(1)}><Icon name="back" /></button>
-  </span> : null;
-  return { ref, buttons };
-}
-
+/** A row of things to scroll sideways, under a name: Kata's SectionHeader and Carousel. */
 export function Shelf({ title, href, children }: { title: string; href?: string; children: ReactNode }) {
-  const row = useRowTurn<HTMLDivElement>();
   return <section className="km-shelf">
-    <header><h2 className="k-heading">{title}</h2><span className="km-shelf-end">{href ? <Crossing kind="kakejiku" className="km-shelf-all" href={href}>Show all</Crossing> : null}{row.buttons}</span></header>
-    <div className="km-shelf-row" ref={row.ref}>{children}</div>
+    <SectionHeader title={title}>{href ? <Crossing kind="kakejiku" className="k-see-all" href={href}>See all</Crossing> : null}</SectionHeader>
+    <Carousel label={title} className="km-shelf-row">{children}</Carousel>
   </section>;
 }
 
