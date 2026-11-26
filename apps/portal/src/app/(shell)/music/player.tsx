@@ -27,10 +27,8 @@ type Player = {
   current: Track | null;
   source: Source;
   playing: boolean;
-  waiting: boolean;
   shuffle: boolean;
   repeat: Repeat;
-  volume: number;
   muted: boolean;
   /** Where the song is now (seconds) and how long it is: read when drawn, not kept in state. */
   position: () => number;
@@ -57,7 +55,6 @@ type Player = {
   /** Opening or closing the song in full starts it on its lyrics. */
   setNowPlaying(open: boolean): void;
   say(text: string): void;
-  toast: Toast | null;
   /** Held while you're reaching for the toast (its menu is open), so it doesn't go mid-choice. */
   holdToast(held: boolean): void;
   /** In a listen party (./party-ui.tsx): the party's queue shows, and the controls act on it. */
@@ -89,6 +86,10 @@ export type Remote = {
 export type Toast = { text: string; at: number; playlistFor?: string[]; held?: boolean; /** A song that wouldn't play: offers "Why?". */ why?: string };
 
 const PlayerContext = createContext<Player | null>(null);
+/** What changes many times a minute (buffering, the volume slider, the toast), apart, so song lists don't redraw with it. */
+export type PlayerLive = { waiting: boolean; volume: number; toast: Toast | null };
+const LiveContext = createContext<PlayerLive>({ waiting: false, volume: 1, toast: null });
+export const usePlayerLive = () => useContext(LiveContext);
 export const usePlayer = () => {
   const p = useContext(PlayerContext);
   if (!p) throw new Error("usePlayer outside MusicProvider");
@@ -487,17 +488,18 @@ export function MusicProvider({ you, children }: { you: Person; children: ReactN
     return {
       you, arriving,
       tracks: r ? r.tracks : tracks, index: r ? r.index : index, current: r ? r.tracks[r.index] ?? null : current, source: r ? r.source : source,
-      playing, waiting, shuffle: r ? false : shuffle, repeat: r ? "off" : repeat, volume, muted,
+      playing, shuffle: r ? false : shuffle, repeat: r ? "off" : repeat, muted,
       position: () => audio.current?.currentTime ?? 0,
       duration: () => (Number.isFinite(audio.current?.duration) ? audio.current!.duration : 0),
       play: r ? (list: Track[], start = 0) => r.play(list, start) : play,
       toggle: r ? r.toggle : toggle, next: r ? r.next : next, prev: r ? r.prev : prev, seek: r ? r.seek : seek, jump: r ? r.jump : jump,
       playNext: r ? r.playNext : playNext, addToQueue: r ? r.addToQueue : addToQueue, remove: r ? r.remove : remove, move: r ? r.move : move,
       setShuffle: r ? notInParty : setShuffle, cycleRepeat: r ? notInParty : cycleRepeat, setVolume, setMuted,
-      ratingOf, rate, panel, setPanel, nowPlaying, setNowPlaying, say, toast, holdToast,
+      ratingOf, rate, panel, setPanel, nowPlaying, setNowPlaying, say, holdToast,
       inParty: Boolean(r), setRemote, adopt, audioElement,
     };
-  }, [remote, you, arriving, tracks, index, current, source, playing, waiting, shuffle, repeat, volume, muted, play, toggle, next, prev, seek, jump, playNext, addToQueue, remove, move, setShuffle, cycleRepeat, setVolume, setMuted, ratingOf, rate, panel, setPanel, nowPlaying, setNowPlaying, say, toast, holdToast, setRemote, adopt, audioElement]);
+  }, [remote, you, arriving, tracks, index, current, source, playing, shuffle, repeat, muted, play, toggle, next, prev, seek, jump, playNext, addToQueue, remove, move, setShuffle, cycleRepeat, setVolume, setMuted, ratingOf, rate, panel, setPanel, nowPlaying, setNowPlaying, say, holdToast, setRemote, adopt, audioElement]);
+  const liveValue = useMemo<PlayerLive>(() => ({ waiting, volume, toast }), [waiting, volume, toast]);
 
-  return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
+  return <PlayerContext.Provider value={value}><LiveContext.Provider value={liveValue}>{children}</LiveContext.Provider></PlayerContext.Provider>;
 }

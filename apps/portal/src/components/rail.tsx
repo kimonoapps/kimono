@@ -4,7 +4,7 @@ import { Crossing } from "@/components/crossing";
 import { useEffect, useLayoutEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { AppBloom, cx, type GlyphName } from "@kimono/ui";
-import { noteUse, usePins, useUsed } from "@/components/pins";
+import { noteUse, usePins } from "@/components/pins";
 import { AppTiles } from "@/components/app-card";
 import { LineIcon, type LineIconName } from "@/components/line-icon";
 
@@ -57,7 +57,7 @@ function useHereRoom(rooms: RailRoom[] | undefined) {
  * the app you're in opens its own rooms beneath it, in place. You and Admin
  * sit at the foot. On a phone it becomes the bottom bar.
  */
-export function Rail({ apps, current, rooms, active, admin, you, defaultPins }: {
+export function Rail({ apps, current, rooms, active, admin, you, defaultPins, used: usedAtLoad = [] }: {
   apps: RailApp[];
   /** The app this page belongs to, if any. */
   current?: string;
@@ -66,6 +66,8 @@ export function Rail({ apps, current, rooms, active, admin, you, defaultPins }: 
   admin: boolean;
   you: ReactNode;
   defaultPins: string[];
+  /** Apps last used in this browser, newest first, as the page arrived. */
+  used?: string[];
 }) {
   const [pins, savePins] = usePins(defaultPins);
   const [sheet, setSheet] = useState(false);
@@ -85,8 +87,10 @@ export function Rail({ apps, current, rooms, active, admin, you, defaultPins }: 
   const pinned = pins.filter((id) => byId.has(id));
   /* Apps in My apps that this person can't open right now keep their place at the end. */
   const setPins = (next: string[]) => savePins([...next, ...pins.filter((id) => !byId.has(id))]);
-  /* Every other app, the ones used last first; the rest keep the catalogue's order. */
-  const used = useUsed();
+  /* Every other app, the ones used last first; the rest keep the catalogue's order. The order is
+     the one this page arrived with and holds while you move around, so icons never shuffle under you;
+     what you open is noted for the next visit. */
+  const [used] = useState(usedAtLoad);
   /* The middle scrolls on its own; it fades at whichever end has more beyond it. */
   const scroller = useRef<HTMLDivElement>(null);
   const [fade, setFade] = useState("");
@@ -131,7 +135,6 @@ export function Rail({ apps, current, rooms, active, admin, you, defaultPins }: 
         aria-current={open ? "page" : undefined}
         draggable={isPinned}
         onDragStart={(event) => { setDragging(id); event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/kimono-app", id); }}
-        onClick={() => noteUse(id)}
         onDragOver={isPinned ? (event) => { const r = event.currentTarget.getBoundingClientRect(); setDropBefore(event.clientY < r.top + r.height / 2 ? id : pinned[pinned.indexOf(id) + 1] ?? "end"); } : undefined}
         onDragEnd={() => { setDragging(null); setDropBefore(null); }}
         onContextMenu={(event) => { event.preventDefault(); setMenu({ id, x: event.clientX, y: event.clientY }); }}

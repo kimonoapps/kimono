@@ -49,6 +49,9 @@ function writePlace(page: Page, title: string | null, push: boolean) {
   if (push) window.history.pushState(null, "", url); else window.history.replaceState(null, "", url);
 }
 
+/** For a poll's setState: the same value as before when nothing changed, so nothing re-renders. */
+const keep = <T,>(next: T) => (now: T) => (JSON.stringify(now) === JSON.stringify(next) ? now : next);
+
 export function WatchApp({ me, household, accent, signOut, phoneApp = false }: { me: Person; household: Person[]; accent: string; signOut: () => Promise<void>; phoneApp?: boolean }) {
   /* Arriving by a party's link goes straight in: it can only be you. */
   const [profile, setProfile] = useState<Person | null>(() => { try { return !PROFILE_PICKER || readParty() || sessionStorage.getItem(chosenKey) === me.username ? me : null; } catch { return null; } });
@@ -130,7 +133,10 @@ export function WatchApp({ me, household, accent, signOut, phoneApp = false }: {
       void loadAll();
     } catch { say("Watch isn't answering. Try again in a moment."); }
   }, [remember, say, loadAll]);
-  const chooseShelf = (shelf: Shelf | null) => { filterRef.current = shelf; setHome(null); setMoreLoading(false); setFilter(shelf); };
+  /* Each filter's Home as last seen: a chip shows it at once while the fresh one comes. */
+  const shelves = useRef(new Map<Shelf | null, Home>());
+  useEffect(() => { if (home) shelves.current.set(filterRef.current, home); }, [home]);
+  const chooseShelf = (shelf: Shelf | null) => { filterRef.current = shelf; setHome(shelves.current.get(shelf) ?? null); setMoreLoading(false); setFilter(shelf); };
   useEffect(() => {
     if (!profile) return;
     watchApi.home(filter).then((h) => { remember(h); if (filterRef.current === filter) setHome(h); }, () => say("Watch isn't answering. Try again in a moment."));
@@ -229,7 +235,7 @@ export function WatchApp({ me, household, accent, signOut, phoneApp = false }: {
   useEffect(() => {
     if (!profile) return;
     let stop = false;
-    const look = () => together.list().then(async (l) => { await circleSettled(); if (stop) return; setPeople(l.people.length ? l.people : household); setFriends(l.friends ?? []); setInvites(l.parties.filter((p) => p.invited)); setParties(l.parties); }, () => {});
+    const look = () => together.list().then(async (l) => { await circleSettled(); if (stop) return; setPeople(keep(l.people.length ? l.people : household)); setFriends(keep(l.friends ?? [])); setInvites(keep(l.parties.filter((p) => p.invited))); setParties(keep(l.parties)); }, () => {});
     look();
     const timer = setInterval(() => { if (!document.hidden) look(); }, 15_000);
     return () => { stop = true; clearInterval(timer); };

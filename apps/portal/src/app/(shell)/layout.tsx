@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { cookies } from "next/headers";
 import { InkPortraitFrame } from "@kimono/ui";
 import { auth } from "@/auth";
 import { railApps } from "@/components/app-shell";
@@ -31,6 +32,8 @@ export default async function ShellLayout({ children }: { children: ReactNode })
   if (!impersonated) void recordAccount(user).catch((error) => console.warn("Could not note this account:", error instanceof Error ? error.message : error));
   const [apps, picture, rooms, mine, notices] = await Promise.all([railApps(user.username), picturePathFor(user.username), appRooms(), myApps(user.username), impersonated ? [] : pendingImpersonations(user.username)]);
   const displayName = user.name?.trim() || user.username;
+  /* Apps last used in this browser (components/pins.ts), so the rail paints in that order from the start. */
+  const used = decodeURIComponent((await cookies()).get("kimono-used-apps")?.value ?? "").split(",").filter(Boolean);
   return <>
   {impersonated && <ImpersonationStrip name={displayName} identity={identityOrigin()} />}
   {notices.length > 0 && <ImpersonationNoticeDialog notices={notices} />}
@@ -39,6 +42,7 @@ export default async function ShellLayout({ children }: { children: ReactNode })
     rooms={rooms}
     admin={user.role === "owner" || user.role === "admin"}
     defaultPins={mine}
+    used={used}
     you={<InkPortraitFrame seed={user.username} weight={6}><Portrait name={displayName} username={user.username} picture={picture ?? user.image ?? null} size={26} /></InkPortraitFrame>}
   >{children}</ShellFrame>
   </>;

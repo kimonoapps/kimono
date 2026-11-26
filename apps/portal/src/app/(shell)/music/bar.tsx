@@ -10,7 +10,7 @@ import { Asker } from "./ask";
 import { Icon } from "./icons";
 import { ListenTogether } from "./party-ui";
 import { AddToPlaylist, ArtistLinks, Bars, Cover, Menu, MenuRates, MoreButton, playlistItems, RateMarks, songMenuItems, type Item } from "./parts";
-import { usePlayer, usePosition, type Source } from "./player";
+import { usePlayer, usePlayerLive, usePosition, type Source } from "./player";
 
 /*
  * What stays on screen while you browse: the bar along the bottom, and the
@@ -114,11 +114,12 @@ function sourceHref(s: NonNullable<Source>): string | null {
 /** Shuffle, previous, play, next, repeat. Shuffle and repeat are pressed stamps when on. */
 function Transport({ large = false }: { large?: boolean }) {
   const p = usePlayer();
+  const live = usePlayerLive();
   const repeatLabel = p.repeat === "one" ? "Repeating this song" : p.repeat === "all" ? "Repeating the queue" : "Repeat";
   return <div className={cx("km-transport", large && "km-transport-lg")}>
     <button type="button" className={cx("km-iconbtn km-small km-order", p.shuffle && "km-on")} aria-pressed={p.shuffle} aria-label="Shuffle" title="Shuffle" onClick={() => p.setShuffle(!p.shuffle)}><Icon name="shuffle" /></button>
     <button type="button" className="km-iconbtn" aria-label="Previous" title="Previous" onClick={p.prev}><Icon name="prev" /></button>
-    <button type="button" className={cx("km-playbtn", large && "km-playbtn-lg", p.waiting && "km-waiting")} aria-label={p.playing ? "Pause" : "Play"} onClick={p.toggle}>
+    <button type="button" className={cx("km-playbtn", large && "km-playbtn-lg", live.waiting && "km-waiting")} aria-label={p.playing ? "Pause" : "Play"} onClick={p.toggle}>
       <Icon name={p.playing ? "pause" : "play"} />
     </button>
     <button type="button" className="km-iconbtn" aria-label="Next" title="Next" onClick={p.next}><Icon name="next" /></button>
@@ -131,10 +132,11 @@ function Transport({ large = false }: { large?: boolean }) {
 /** The song's place: a rail between its times, or (phone Now Playing) a rail with the times under it. */
 function SongPlace({ under = false }: { under?: boolean }) {
   const p = usePlayer();
+  const live = usePlayerLive();
   const { position, duration } = usePosition();
   const [scrub, setScrub] = useState<number | null>(null);
   const rail = <Slider label="Place in the song" value={position} max={duration} format={(v) => `${clock(v)} of ${clock(duration)}`} onChange={setScrub} onCommit={(v) => { setScrub(null); p.seek(v); }}
-    wave still={!p.playing || p.waiting} className="km-slider-is-wave" />;
+    wave still={!p.playing || live.waiting} className="km-slider-is-wave" />;
   if (under) return <div className="km-seek km-seek-under">{rail}<span className="km-time">{clock(scrub ?? position)}</span><span className="km-time">{clock(duration)}</span></div>;
   return <div className="km-seek"><span className="km-time">{clock(scrub ?? position)}</span>{rail}<span className="km-time">{clock(duration)}</span></div>;
 }
@@ -162,6 +164,7 @@ function BarViews({ words }: { words: boolean }) {
 /** Volume: a rail beside the speaker; where there's no room, a tap mutes and holding brings the rail up. */
 function Volume() {
   const p = usePlayer();
+  const live = usePlayerLive();
   const [raised, setRaised] = useState(false);
   const box = useRef<HTMLSpanElement>(null);
   const hold = useRef<number | undefined>(undefined);
@@ -179,9 +182,9 @@ function Volume() {
       onPointerUp={() => clearTimeout(hold.current)} onPointerLeave={() => clearTimeout(hold.current)}
       onContextMenu={(e) => { e.preventDefault(); setRaised(true); }}
       onClick={() => { if (held.current) { held.current = false; return; } p.setMuted(!p.muted); }}>
-      <Icon name={p.muted || p.volume === 0 ? "muted" : "volume"} />
+      <Icon name={p.muted || live.volume === 0 ? "muted" : "volume"} />
     </button>
-    <Slider label="Volume" value={p.muted ? 0 : p.volume} max={1} format={(v) => `${Math.round(v * 100)}%`} onChange={p.setVolume} onCommit={p.setVolume} className="km-volume-slider" />
+    <Slider label="Volume" value={p.muted ? 0 : live.volume} max={1} format={(v) => `${Math.round(v * 100)}%`} onChange={p.setVolume} onCommit={p.setVolume} className="km-volume-slider" />
   </span>;
 }
 
@@ -427,8 +430,9 @@ function WhySheet({ songKey, onClose }: { songKey: string; onClose: () => void }
 /** A word along the bottom. After a like it says where the song went, and offers a playlist then and there. */
 function Toast() {
   const p = usePlayer();
+  const live = usePlayerLive();
   const [menu, setMenu] = useState<{ at: HTMLElement; items: Item[] } | null>(null);
-  const t = p.toast;
+  const t = live.toast;
   const offer = t?.playlistFor;
   const [why, setWhy] = useState<string | null>(null);
   const acts = offer || t?.why;

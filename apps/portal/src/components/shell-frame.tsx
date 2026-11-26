@@ -14,20 +14,22 @@ import { Rail, type RailApp, type RailRoom } from "@/components/rail";
  * which of the house's places you're in is read from the address, the same on
  * the server's first paint as after every move.
  */
-export function ShellFrame({ apps, rooms, admin, you, defaultPins, children }: {
+export function ShellFrame({ apps, rooms, admin, you, defaultPins, used, children }: {
   apps: RailApp[];
   /** Each app's rooms, by app id, shown beneath its pin when it's open. */
   rooms: Record<string, RailRoom[]>;
   admin: boolean;
   you: ReactNode;
   defaultPins: string[];
+  /** Apps last used in this browser, newest first, as the server read them. */
+  used: string[];
   children: ReactNode;
 }) {
   const pathname = usePathname();
   const app = appAt(apps, pathname);
   const active = pathname === "/" ? "home" : under(pathname, "/admin") ? "admin" : under(pathname, "/account") ? "account" : undefined;
   return <div className={cx("app-frame", app && "in-app")} data-app={app?.id} style={app ? palette(app.accent) : undefined}>
-    <Rail apps={apps} current={app?.id} rooms={app ? rooms[app.id] : undefined} active={active} admin={admin} defaultPins={defaultPins} you={you} />
+    <Rail apps={apps} current={app?.id} rooms={app ? rooms[app.id] : undefined} active={active} admin={admin} defaultPins={defaultPins} used={used} you={you} />
     <main className="main-content"><PageTransition>{children}</PageTransition></main>
     <FileDropLayer />
   </div>;

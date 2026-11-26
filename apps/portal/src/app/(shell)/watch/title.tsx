@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { airText, labelOf, languageName, languages, minutesText, watchApi, type Episode, type TitleView } from "./api";
 import { alike, cx, Img, ListButton, RateButton, TitleMark, Top10, useTabTitle, useWatch } from "./bits";
 import { Icon } from "./icons";
+import { hasView, viewOf } from "./home";
 import { createPortal } from "react-dom";
 import { FriendsAt, FriendsHere, FriendsThought, Face } from "./friends";
 import { RecommendSheet } from "../account/friends/friends-ui";
@@ -32,9 +33,13 @@ export function TitleSheet({ id, onClose, refreshKey, leaving = false }: { id: s
   const load = useCallback((season?: number) => watchApi.title(id, season).then(apply, fail), [id, apply]);
 
   useEffect(() => {
-    watchApi.title(id).then(apply, fail);
+    /* The hover card usually has it already: show that at once, then what's current. */
+    let live = true;
+    const known = hasView(id);
+    viewOf(id).then((v) => { if (live) apply(v); }, (e) => { if (live && !known) fail(e); });
+    if (known) watchApi.title(id).then((v) => { if (live) apply(v); }, () => {});
     const frame = requestAnimationFrame(() => setOn(true));
-    return () => cancelAnimationFrame(frame);
+    return () => { live = false; cancelAnimationFrame(frame); };
   }, [id, apply]);
   /* Back from the player: where they are has moved on. */
   useEffect(() => { if (refreshKey && shown.current !== refreshKey) { shown.current = refreshKey; void load(view?.season); } }, [refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps

@@ -50,6 +50,7 @@ export function usePins(fromServer: string[]) {
  * rest of the apps in the order you reach for them.
  */
 const USED = "kimono-used-apps";
+export const USED_COOKIE = "kimono-used-apps";
 let used: string[] | null = null;
 const usedListeners = new Set<() => void>();
 const readUsed = () => {
@@ -71,6 +72,8 @@ export function noteUse(id: string) {
   if (list[0] === id) return;
   used = [id, ...list.filter((other) => other !== id)].slice(0, 40);
   try { localStorage.setItem(USED, JSON.stringify(used)); } catch { /* storage refused: kept for this page */ }
+  /* The server reads the same order from a cookie, so the rail's first paint is already in it. */
+  document.cookie = `${USED_COOKIE}=${encodeURIComponent(used.slice(0, 24).join(","))}; path=/; max-age=31536000; samesite=lax`;
   usedListeners.forEach((listener) => listener());
 }
 

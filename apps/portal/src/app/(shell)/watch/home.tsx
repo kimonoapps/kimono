@@ -162,6 +162,8 @@ export const viewOf = (id: string) => {
   if (!known) { known = watchApi.title(id); views.set(id, known); known.catch(() => views.delete(id)); setTimeout(() => views.delete(id), 60_000); }
   return known;
 };
+/** Whether a title's view is already loaded or on its way (from the hover card or a list). */
+export const hasView = (id: string) => views.has(id);
 
 function HoverCard() {
   const watch = useWatch();

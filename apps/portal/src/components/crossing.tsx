@@ -14,7 +14,7 @@ import { afterPaint, riseWhenReady, whenPageStands } from "@/components/motion";
  * of the page being replaced, so it is gone by the time the new one commits,
  * and an arrival it was waiting for would never reach it.
  */
-const Arrival = createContext<(href: string) => Promise<void>>(() => Promise.resolve());
+const Arrival = createContext<(href: string, quick?: boolean) => Promise<void>>(() => Promise.resolve());
 
 function Arrivals({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -41,7 +41,7 @@ function Arrivals({ children }: { children: ReactNode }) {
      opening circle; coming out, it's Watch, closing once Kimono has drawn. */
   const under = useRef<HTMLElement | null>(null);
   const pressedAt = useRef<Point | null>(null);
-  const settle = useCallback((slideIn: boolean) => {
+  const settle = useCallback((slideIn: boolean, quick = false) => {
     landing.current();
     let settling = () => {};
     const across = crossing.current;
@@ -61,8 +61,9 @@ function Arrivals({ children }: { children: ReactNode }) {
         else copy.remove();
       }
       if (still() || layer || across === "out") return;
-      if (slideIn) afterPaint([page.animate([{ opacity: 0, transform: "translateX(40px)" }, { opacity: 1, transform: "none" }], { duration: 300, easing: "cubic-bezier(.05, .7, .1, 1)", fill: "backwards" })]);
-      settling = riseWhenReady(page);
+      if (slideIn) afterPaint([page.animate([{ opacity: 0, transform: `translateX(${quick ? 16 : 40}px)` }, { opacity: 1, transform: "none" }], { duration: quick ? 200 : 300, easing: "cubic-bezier(.05, .7, .1, 1)", fill: "backwards" })]);
+      /* Within one app the page just slides; its pieces rise only when you arrive in an app. */
+      if (!quick) settling = riseWhenReady(page);
     });
     landing.current = () => { stop(); settling(); };
   }, []);
@@ -70,6 +71,8 @@ function Arrivals({ children }: { children: ReactNode }) {
 
   // A press marks the move as ours; whichever witness sees it land settles it.
   const pushed = useRef(false);
+  /* The move under way stays inside one app: a short slide, not the whole arrival. */
+  const quickMove = useRef(false);
   const arrived = useCallback(() => {
     const resolve = waiting.current;
     waiting.current = null;
@@ -78,7 +81,7 @@ function Arrivals({ children }: { children: ReactNode }) {
     resolve();
     // Same path (a room like ?view=recent, or the page you're on): no path
     // change will settle it, so settle it here.
-    if (pushed.current) { pushed.current = false; settle(true); }
+    if (pushed.current) { pushed.current = false; settle(true, quickMove.current); }
   }, [settle]);
 
   // A new path settles in, back and forward included. The first page of a
@@ -89,7 +92,9 @@ function Arrivals({ children }: { children: ReactNode }) {
     shown.current = pathname;
     const slideIn = pushed.current;
     pushed.current = false;
-    settle(slideIn);
+    /* Back and forward are drawn by PageTransition alone; settling here too moved the page twice. */
+    if (!slideIn) { landing.current(); return; }
+    settle(true, quickMove.current);
   }, [pathname, settle]);
 
   // React ending the transition is the page standing. The pathname is the
@@ -114,8 +119,9 @@ function Arrivals({ children }: { children: ReactNode }) {
      and cut the dissolve short, so the hand-over waits for the dissolve to
      finish. The next page is already being fetched meanwhile (useCrossTo
      prefetches on press), so the wait costs nothing on a slow page. */
-  const navigate = useCallback((href: string) => new Promise<void>((resolve) => {
+  const navigate = useCallback((href: string, quick = false) => new Promise<void>((resolve) => {
     const leaving = document.querySelector<HTMLElement>(".main-content");
+    quickMove.current = quick;
     setMoving(true);
     pushed.current = true;
     waiting.current = resolve;
@@ -160,10 +166,12 @@ function Arrivals({ children }: { children: ReactNode }) {
     }
     if (from) { handOver(); return; }
     if (!leaving || still()) { handOver(); return; }
-    const dissolve = leaving.animate([
-      { opacity: 1, transform: "none", filter: "blur(0)" },
-      { opacity: 0, transform: "translateX(-24px) scale(.985)", filter: "blur(6px)" },
-    ], { duration: 240, easing: "cubic-bezier(.4, 0, .9, .7)", fill: "forwards" });
+    const dissolve = quick
+      ? leaving.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translateX(-12px)" }], { duration: 110, easing: "cubic-bezier(.4, 0, 1, 1)", fill: "forwards" })
+      : leaving.animate([
+        { opacity: 1, transform: "none", filter: "blur(0)" },
+        { opacity: 0, transform: "translateX(-24px) scale(.985)", filter: "blur(6px)" },
+      ], { duration: 240, easing: "cubic-bezier(.4, 0, .9, .7)", fill: "forwards" });
     dissolve.finished.then(handOver, handOver);
   }), [router, arrived]);
 
@@ -194,6 +202,8 @@ export function useCrossTo() {
 
   return useCallback((kind: CrossingKind, href: string, external = false, destinationAccent?: string) => {
     if (!external) router.prefetch(href, whole);
+    /* The long crossing is for changing apps. Page to page inside one app is a quick slide, with no screen. */
+    if (!external && sameApp(location.pathname, new URL(href, location.href).pathname)) { void navigate(href, true); return; }
     const source = getComputedStyle(document.querySelector(".app-frame") || document.documentElement);
     const portal = getComputedStyle(document.documentElement);
     const destination = destinationAccent ? accentRamp(destinationAccent) : null;
@@ -215,6 +225,10 @@ export function useCrossTo() {
     }, colors);
   }, [cross, navigate, router]);
 }
+
+/** Whether two addresses belong to the same app: the same first segment (/drive, /drive?view=recent; /account/x, /account). Home is its own. */
+const appOf = (pathname: string) => pathname.split("/")[1] ?? "";
+const sameApp = (from: string, to: string) => appOf(from) !== "" && appOf(from) === appOf(to);
 
 /**
  * A link that crosses rather than navigates. Which crossing you get is decided

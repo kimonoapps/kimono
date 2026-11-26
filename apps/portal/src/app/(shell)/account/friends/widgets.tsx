@@ -375,18 +375,21 @@ function Stats({ w, d }: { w: Widget; d: BoardData }) {
   </div>;
 }
 
-/** A number that counts up to itself when it arrives. */
+/** A number that counts up to itself when it arrives; a later change rolls on from where it was, not from 0. */
 function CountUp({ to }: { to: string }) {
   const target = Number(to);
   const decimals = to.includes(".") ? 1 : 0;
   const [shown, setShown] = useState(0);
+  const was = useRef(0);
+  useEffect(() => { was.current = shown; }, [shown]);
   useEffect(() => {
+    const from = was.current;
     if (!Number.isFinite(target) || matchMedia("(prefers-reduced-motion: reduce)").matches) { const t = setTimeout(() => setShown(target), 0); return () => clearTimeout(t); }
     let frame = 0;
     const start = performance.now();
     const step = (now: number) => {
       const t = Math.min(1, (now - start) / 900);
-      setShown(target * (1 - Math.pow(1 - t, 3)));
+      setShown(from + (target - from) * (1 - Math.pow(1 - t, 3)));
       if (t < 1) frame = requestAnimationFrame(step);
     };
     frame = requestAnimationFrame(step);
