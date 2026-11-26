@@ -88,7 +88,7 @@ fun KimonoReadScreen(session: Session, back: () -> Unit) {
     Scaffold(containerColor = MaterialTheme.colorScheme.surface, topBar = { KimonoTopBar("Kimono Reader", onBack = back) }) { padding ->
         Column(Modifier.padding(padding).padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text("Your phone does the typing. The reader never asks for anything.", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Step(1, "Turn the reader on and pick Set up Kimono Reader. It shows a Wi-Fi called Kimono Reader-….")
+            Step(1, "On the reader, open Library › Kimono Reader. It shows a Wi-Fi called Kimono Reader-….")
             Step(2, "Join that Wi-Fi on this phone: scan the QR code on the reader, or pick it in Wi-Fi settings. If a sign-in sheet opens, close it.")
             Step(3, "Come back here and tap Continue on the reader. Pick your home Wi-Fi and type its password. The reader joins it and pairs itself.")
             Seal("Continue on the reader", enabled = link != null, onClick = { link?.let { uri.openUri(it) } })

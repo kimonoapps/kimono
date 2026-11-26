@@ -22,7 +22,7 @@ export default async function SetupPage() {
     <h1>Set up Kimono Reader</h1>
     <p className="lede">Your phone does the typing. The reader never asks for anything.</p>
     <ol>
-      <li>Turn the reader on and pick <b>Set up Kimono Reader</b>. It shows a Wi-Fi called <b>Kimono Reader-…</b>.</li>
+      <li>On the reader, open <b>Library › Kimono Reader</b>. It shows a Wi-Fi called <b>Kimono Reader-…</b>.</li>
       <li>On this phone, join that Wi-Fi (scan the reader&apos;s QR code, or pick it in Wi-Fi settings). If a sign-in sheet opens, close it.</li>
       <li>Come back here and tap <b>Continue on the reader</b>. Pick your home Wi-Fi and type its password. The reader joins it, pairs itself with your Kimono and shows your shelf.</li>
     </ol>
