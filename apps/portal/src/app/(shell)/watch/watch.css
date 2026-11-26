@@ -911,13 +911,13 @@
 .kw .kw-fr-now b{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .kw .kw-fr-now small{font-size:13px;color:var(--fg-2)}
 .kw .kw-fr-recent{display:flex;gap:10px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
-.kw .kw-fr-recent > div{flex:0 0 96px;display:grid;gap:5px}
+.kw .kw-fr-recent > button{flex:0 0 176px;display:grid;gap:3px;text-align:left;min-width:0}
+.kw .kw-fr-recent b{margin-top:5px;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .kw .kw-fr-recent small{font-size:12px;color:var(--fg-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.kw .kw-fr-poster{position:relative;border-radius:8px;overflow:hidden}
-.kw .kw-fr-poster .kw-card{width:100%;aspect-ratio:2/3;background:var(--surface-3)}
-.kw .kw-fr-poster .kw-card::after,.kw .kw-fr-poster .kw-card:has(img) .kw-t{display:none}
-.kw .kw-fr-poster .kw-card:not(:has(img)) .kw-t{display:block;left:8px;right:8px;top:8px;bottom:auto;font-size:14px;line-height:1.15;text-shadow:none;overflow-wrap:anywhere}
-.kw .kw-fr-poster .kw-bar,.kw .kw-fr-now .kw-bar{position:absolute;left:8px;right:8px;bottom:6px;width:auto}
+.kw .kw-fr-shot{position:relative;display:block;aspect-ratio:16/9;border-radius:8px;overflow:hidden;background:var(--surface-3)}
+.kw .kw-fr-shot img{width:100%;height:100%;object-fit:cover;transition:transform .4s var(--ease)}
+.kw .kw-fr-recent > button:hover .kw-fr-shot img{transform:scale(1.04)}
+.kw .kw-fr-shot .kw-bar,.kw .kw-fr-now .kw-bar{position:absolute;left:8px;right:8px;bottom:6px;width:auto}
 .kw .kw-fr-here{display:grid;gap:8px}
 .kw .kw-fr-here > div{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--fg-2)}
 .kw .kw-fr-here > div b{color:var(--fg)}
@@ -978,7 +978,7 @@
 .kw .kw-fr-recs q{display:block;margin-top:2px;color:var(--fg-1, inherit);font-style:italic}
 
 /* Progress is the ink wave (InkWave), as on the phone; over a picture it's light, with a shadow to read on any frame. */
-.kw .kw-th .kw-bar,.kw .kw-fr-poster .kw-bar,.kw .kw-frpop-what .kw-bar{color:#f3e7e2;filter:drop-shadow(0 1px 2px rgba(0,0,0,.7))}
+.kw .kw-th .kw-bar,.kw .kw-fr-shot .kw-bar,.kw .kw-frpop-what .kw-bar{color:#f3e7e2;filter:drop-shadow(0 1px 2px rgba(0,0,0,.7))}
 .kw .kw-cw .kw-bar{width:auto;margin:6px 12px 0}
 
 /* The player's bar is the ink wave (InkWave): no flat rail under it, the knob an upright stroke, intro and credits as pieces of the line. */

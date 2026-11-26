@@ -180,10 +180,11 @@ function FriendCard({ f, asking, onAsk, onCancel, onTaste, onRemove }: { f: Frie
       <span className="kw-th"><Img src={now.title.backdrop ?? now.title.poster} /><InkMeter className="kw-bar" value={now.progress} label="Watched" /></span>
       <span><b>{now.title.name}</b><small>{[now.label, now.partyId ? "together" : null].filter(Boolean).join(" · ") || now.title.shelf}</small></span>
     </button> : null}
-    {recent.length ? <div className="kw-fr-recent">{recent.map((s) => <div key={s.title.id}>
-      <div className="kw-fr-poster"><PosterCard card={s.title} plain poster />{!s.finished ? <InkMeter className="kw-bar" value={s.progress} label="Watched" /> : null}</div>
+    {recent.length ? <div className="kw-fr-recent">{recent.map((s) => <button key={s.title.id} aria-label={s.title.name} onClick={() => watch.openTitle(s.title.id)}>
+      <span className="kw-fr-shot"><Img src={s.title.backdrop ?? s.title.poster} />{!s.finished ? <InkMeter className="kw-bar" value={s.progress} label="Watched" /> : null}</span>
+      <b>{s.title.name}</b>
       <small>{s.finished ? (s.label ? `${s.label} · done` : "Finished") : s.label ?? `${Math.round(s.progress * 100)}% in`}</small>
-    </div>)}</div> : null}
+    </button>)}</div> : null}
   </article>;
 }
 
