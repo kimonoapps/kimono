@@ -76,8 +76,8 @@ class NotesModel(val notes: Notes, val drive: Drive, val platform: Platform) {
     /** A new note's request has taken longer than 300ms. */
     var creating by mutableStateOf(false)
         private set
-    var people by mutableStateOf<Map<String, Person>>((notes.knownPeople() ?: drive.knownPeople()).orEmpty().associateBy { it.username.lowercase() })
-        private set
+    /** Names and faces by username, asked for as they're read (People.kt). */
+    val people: Map<String, Person> get() = notes.people
     /** Who is in each shared notebook, asked as they're shown. */
     val members = mutableStateMapOf<String, List<String>>()
 
@@ -123,7 +123,6 @@ class NotesModel(val notes: Notes, val drive: Drive, val platform: Platform) {
         }
     }
 
-    suspend fun loadPeople() { runCatching { notes.people() }.onSuccess { list -> people = list.associateBy { it.username.lowercase() } } }
 
     /** Who a notebook is shared with beyond its space, for the faces after its name. */
     suspend fun loadMembers(notebookId: String) {

@@ -88,9 +88,6 @@ data class Sharing(
 @Serializable
 private data class NoteLinkAnswer(val link: String? = null)
 
-@Serializable
-private data class PeopleAnswer(val people: List<Person> = emptyList())
-
 /** An edit made with no connection, kept on the phone until it can be sent under the version rule. */
 @Serializable
 data class WaitingEdit(
@@ -173,9 +170,8 @@ class Notes(private val session: Session, private val platform: Platform) {
         answers.drop("${base(id, notebook)}/members")
     }
 
-    /** Everyone it can be shared with. */
-    suspend fun people(): List<Person> = read<PeopleAnswer>(session.fetch("$LIBRARY/people")).people
-    fun knownPeople(): List<Person>? = answers.peek("$LIBRARY/people")?.let { runCatching { json.decodeFromString<PeopleAnswer>(it).people }.getOrNull() }
+    /** People by username, and finding them by name (People.kt). */
+    val people: People get() = session.people
 
     /* ── keeping in step with Drive's change feed ── */
 

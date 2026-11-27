@@ -127,9 +127,6 @@ class DriveModel(val drive: Drive, val platform: Platform) {
     val uploads: Uploads = platform.uploads ?: InAppUploads(drive)
     /** Goes up whenever an upload finishes, so open folders reload. */
     var landed by mutableStateOf(0)
-    /** Everyone with a Kimono account: asked afresh each time, the last answer standing in when offline. */
-    suspend fun people(): List<app.kimono.data.Person> =
-        try { drive.people() } catch (p: app.kimono.data.KimonoProblem) { drive.knownPeople() ?: throw p }
 
     init {
         scope.launch {
@@ -863,8 +860,7 @@ internal fun driveShareTarget(model: DriveModel, node: DriveNode, canEdit: Boole
     known = null,
     load = { model.drive.shares(node.id) },
     set = { username, role -> model.drive.share(node.id, username, role) },
-    people = { model.people() },
-    knownPeople = model.drive.knownPeople().orEmpty(),
+    people = model.drive.people,
     canEdit = canEdit,
 )
 

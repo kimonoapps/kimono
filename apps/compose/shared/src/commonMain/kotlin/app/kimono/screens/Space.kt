@@ -96,7 +96,7 @@ fun SpaceScreen(model: DriveModel, spaceId: String, me: String?, back: () -> Uni
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     var space by remember { mutableStateOf(model.drive.knownSpace(spaceId)) }
-    var people by remember { mutableStateOf(model.drive.knownPeople().orEmpty().associateBy { it.username.lowercase() }) }
+    val people = model.drive.people
     var problem by remember { mutableStateOf<String?>(null) }
     var adding by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf(space?.name ?: "") }
@@ -108,7 +108,6 @@ fun SpaceScreen(model: DriveModel, spaceId: String, me: String?, back: () -> Uni
             /* Opened on the kept answer: leave a name being typed alone. */
             if (name.isEmpty() || name == space?.name) name = loaded.name
             space = loaded
-            runCatching { model.people() }.onSuccess { list -> people = list.associateBy { it.username.lowercase() } }
         } catch (p: KimonoProblem) { problem = p.message }
     }
     fun change(done: String? = null, work: suspend () -> SpaceDetail?) = scope.launch {
@@ -279,43 +278,23 @@ fun CrestPicker(model: DriveModel, crest: String, colour: String, onPick: (crest
 
 private fun hex(value: String): Color = Color(0xFF000000 or value.removePrefix("#").toLong(16))
 
-/** People with Kimono accounts who aren't in the space yet, to add with a role. */
+/** People to add to the space with a role, found by name; the ones added from here stay listed, ticked. */
 @Composable
 private fun PeopleSheet(model: DriveModel, already: Set<String>, me: String?, onDismiss: () -> Unit, onAdd: (Person, String) -> Unit) {
-    /* Who was in it when the sheet opened: people added from here stay listed, ticked. */
     val before = remember { already }
-    var everyone by remember { mutableStateOf<List<Person>?>(null) }
-    var problem by remember { mutableStateOf<String?>(null) }
-    var search by remember { mutableStateOf("") }
     var role by remember { mutableStateOf("viewer") }
-    val added = remember { mutableStateListOf<String>() }
-    LaunchedEffect(Unit) { try { everyone = model.people() } catch (p: KimonoProblem) { problem = p.message } }
+    val added = remember { mutableStateListOf<Person>() }
     InkSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-        Column(Modifier.padding(horizontal = 20.dp).heightIn(min = 320.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp).heightIn(min = 320.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             InkTitle("Add people", icon = "people")
             RolePicker(role, includeOwner = false) { role = it }
-            OutlinedTextField(search, { search = it }, singleLine = true, label = { Text("Name or username") }, modifier = Modifier.fillMaxWidth())
-            Problem(problem)
-            val list = everyone?.filter { it.username.lowercase() !in before && !it.username.equals(me, ignoreCase = true) }
-                ?.filter { search.isBlank() || it.name.contains(search, ignoreCase = true) || it.username.contains(search, ignoreCase = true) }
-            when {
-                everyone == null && problem == null -> Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { InkLoader() }
-                list.isNullOrEmpty() -> Text(
-                    if (search.isBlank()) "Everyone with a Kimono account is already here." else "No one called that has a Kimono account.",
-                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 16.dp),
-                )
-                else -> LazyColumn(Modifier.heightIn(max = 420.dp), contentPadding = PaddingValues(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
-                    itemsIndexed(list, key = { _, p -> p.username }) { index, person ->
-                        val done = person.username in added
-                        SegmentedListItem(
-                            onClick = { if (!done) { added += person.username; onAdd(person, role) } },
-                            shapes = ListItemDefaults.segmentedShapes(index, list.size),
-                            colors = segmentColors(),
-                            leadingContent = { Portrait(person.picture, person.name, person.username, 40.dp) },
-                            supportingContent = { Text(if (done) "Added" else "@${person.username}") },
-                            trailingContent = { if (done) Icon(kimonoIcon("check"), null, tint = MaterialTheme.colorScheme.primary) else Icon(kimonoIcon("plus"), null) },
-                        ) { Text(person.name, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                    }
+            PeopleSearch(model.drive.people, skip = before + added.map { it.username } + listOfNotNull(me), placeholder = "Name or username",
+                onPick = { person -> added += person; onAdd(person, role) })
+            added.forEach { person ->
+                Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Portrait(person.picture, person.name, person.username, 36.dp)
+                    Text(person.name, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    Icon(kimonoIcon("check"), "Added", tint = MaterialTheme.colorScheme.primary)
                 }
             }
         }
@@ -342,9 +321,8 @@ fun NewSpaceSheet(model: DriveModel, me: String?, onDismiss: () -> Unit, onMade:
     var problem by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var picking by remember { mutableStateOf(false) }
-    var everyone by remember { mutableStateOf<Map<String, Person>>(emptyMap()) }
+    val everyone = model.drive.people
     val members = remember { mutableStateListOf<SpaceMember>() }
-    LaunchedEffect(Unit) { everyone = runCatching { model.people() }.getOrDefault(emptyList()).associateBy { it.username } }
     InkSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         LazyColumn(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 32.dp)) {
             item { InkTitle("New space", icon = "plus") }

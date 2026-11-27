@@ -72,12 +72,9 @@ import kotlinx.coroutines.launch
  * link of its own, for the people it's shared with or for anyone.
  */
 
-/** Everyone with a Kimono account, by lowercased username: names and faces for usernames. */
+/** Names and faces by lowercased username, asked for as they're read (People.kt); never everyone. */
 @Composable
-internal fun rememberPeople(code: Code): Map<String, Person> {
-    val people by produceState(code.knownPeople().orEmpty()) { value = runCatching { code.people() }.getOrDefault(value) }
-    return remember(people) { people.associateBy { it.username.lowercase() } }
-}
+internal fun rememberPeople(code: Code): Map<String, Person> = code.people
 
 internal fun Map<String, Person>.nameOf(username: String) = this[username.lowercase()]?.name ?: username
 
@@ -100,31 +97,6 @@ private fun PersonRow(person: Person?, username: String, note: String, trailing:
             Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         trailing()
-    }
-}
-
-/** Finding someone in the household to share with, by name or username. */
-@Composable
-private fun PeopleFinder(people: Map<String, Person>, leave: Set<String>, pick: (Person) -> Unit) {
-    var find by remember { mutableStateOf("") }
-    val words = find.trim().lowercase().removePrefix("@")
-    val found = if (words.isEmpty()) emptyList() else people.values
-        .filter { it.username.lowercase() !in leave && (it.name.lowercase().contains(words) || it.username.lowercase().contains(words)) }
-        .sortedBy { it.name.lowercase() }.take(6)
-    Column {
-        OutlinedTextField(
-            find, { find = it }, placeholder = { Text("Add people") }, singleLine = true,
-            leadingIcon = { Icon(kimonoIcon("search"), null, modifier = Modifier.size(18.dp)) },
-            shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(),
-        )
-        if (words.isNotEmpty()) Column(Modifier.padding(top = 4.dp)) {
-            found.forEach { p ->
-                Box(Modifier.clip(RoundedCornerShape(14.dp)).clickable { find = ""; pick(p) }.padding(horizontal = 4.dp)) {
-                    PersonRow(p, p.username, "@${p.username}")
-                }
-            }
-            if (found.isEmpty()) Text("No one by that name.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp))
-        }
     }
 }
 
@@ -188,7 +160,7 @@ internal fun ChatShareSheet(code: Code, platform: Platform, w: CodeWorkspace, on
         val s = sharing
         if (s == null) { if (problem == null) Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { InkLoader() } }
         else {
-            PeopleFinder(people, s.people.map { it.username.lowercase() }.toSet() + owner.lowercase()) { p -> change({ it.copy(people = it.people + ChatInvite(p.username, "read")) }) { code.shareChat(w.id, p.username, "read") } }
+            PeopleSearch(code.people, skip = s.people.map { it.username }.toSet() + owner, onPick = { p -> change({ it.copy(people = it.people + ChatInvite(p.username, "read")) }) { code.shareChat(w.id, p.username, "read") } })
             Column {
                 PersonRow(people[owner.lowercase()], owner, "Owner")
                 s.people.forEach { invite ->
@@ -250,16 +222,13 @@ internal fun ArtifactShareSheet(code: Code, platform: Platform, workspaceId: Str
         val s = sharing
         if (s == null) { if (problem == null) Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { InkLoader() } }
         else {
-            val on = s.people.map { it.lowercase() }.toSet()
             val me = code.me?.lowercase()
-            /* Everyone but the owner, the ones it's shared with first. */
-            val everyone = people.values.filter { it.username.lowercase() != me }.sortedWith(compareBy({ it.username.lowercase() !in on }, { it.name.lowercase() }))
+            /* Who it's shared with, each switched off to take them off; anyone else found by name. */
+            fun share(username: String, next: Boolean) = scope.launch { change({ it.copy(people = if (next) it.people + username else it.people.filter { u -> !u.equals(username, ignoreCase = true) }) }) { code.shareArtifact(workspaceId, name, username, next) } }
+            PeopleSearch(code.people, skip = s.people.toSet() + listOfNotNull(me), onPick = { p -> share(p.username, true) })
             Column {
-                everyone.forEach { p ->
-                    val shared = p.username.lowercase() in on
-                    PersonRow(p, p.username, "@${p.username}") {
-                        Switch(shared, { next -> scope.launch { change({ it.copy(people = if (next) it.people + p.username else it.people.filter { u -> !u.equals(p.username, ignoreCase = true) }) }) { code.shareArtifact(workspaceId, name, p.username, next) } } })
-                    }
+                s.people.filter { it.lowercase() != me }.forEach { u ->
+                    PersonRow(people[u.lowercase()], u, "@$u") { Switch(true, { next -> share(u, next) }) }
                 }
             }
             /* Public links switched off: no making it public (one made public before can still be closed). */

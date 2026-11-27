@@ -240,7 +240,7 @@ private fun NotesDrawerSheet(model: NotesModel, accent: String, me: String?, pla
             /* A notebook, its sections folded under it. */
             fun book(notebook: Notebook) {
                 item(key = "nb-${notebook.id}") {
-                    LaunchedEffect(notebook.id) { model.loadMembers(notebook.id); if (notebook.sharedWithYou && model.people.isEmpty()) model.loadPeople() }
+                    LaunchedEffect(notebook.id) { model.loadMembers(notebook.id) }
                     val shared = model.members[notebook.id].orEmpty().isNotEmpty()
                     var menu by remember { mutableStateOf(false) }
                     if (confirming == notebook.id) InlineConfirm(notebook.name, model.notesIn(NotePlace.InNotebook(notebook.id)).size, keep = { confirming = null }) {
@@ -360,7 +360,6 @@ private fun InlineConfirm(name: String, count: Int, keep: () -> Unit, delete: ()
 private fun MemberFaces(model: NotesModel, notebook: Notebook, me: String?) {
     val others = model.members[notebook.id].orEmpty().filter { !it.equals(me, ignoreCase = true) }.take(2)
     if (others.isEmpty()) return
-    LaunchedEffect(Unit) { if (model.people.isEmpty()) model.loadPeople() }
     Row(horizontalArrangement = Arrangement.spacedBy((-8).dp), modifier = Modifier.padding(start = 6.dp)) {
         others.forEach { username ->
             val person = model.people[username.lowercase()]
@@ -646,8 +645,7 @@ internal fun shareTarget(model: NotesModel, id: String, notebook: Boolean, name:
     known = model.notes.knownSharing(id, notebook),
     load = { model.notes.sharing(id, notebook) },
     set = { username, role -> model.notes.share(id, notebook, username, role) },
-    people = { model.notes.people() },
-    knownPeople = model.people.values.toList(),
+    people = model.notes.people,
     link = { on -> model.notes.link(id, notebook, on) },
     canEdit = canEdit,
 )

@@ -359,7 +359,6 @@ data class SharedLink(
     val name: String? = null, val content: String? = null, val version: Int = 0, val public: Boolean = false,
     val media: String? = null,
 )
-@Serializable private data class People(val people: List<Person> = emptyList())
 @Serializable private data class ProjectList(val projects: List<CodeProject>)
 @Serializable private data class RepoList(val repositories: List<CodeRepository>)
 @Serializable private data class BranchList(val branches: List<String>)
@@ -713,9 +712,8 @@ class Code(private val session: Session, private val platform: Platform? = null)
     fun chatLink(token: String) = "${session.server}/ai/c/$token"
     fun artifactLink(token: String) = "${session.server}/ai/a/$token"
 
-    /** Everyone with a Kimono account, to share with and to put names and faces to usernames. */
-    fun knownPeople(): List<Person>? = session.answers.peek(PEOPLE)?.let { runCatching { json.decodeFromString<People>(it).people }.getOrNull() }
-    suspend fun people(): List<Person> = json.decodeFromString<People>(session.fetch(PEOPLE)).people
+    /** People by username, to put names and faces to usernames, and finding them by name (People.kt). */
+    val people: People get() = session.people
 
     /** Who is using the app. */
     val me: String? get() = (session.state.value as? SessionState.SignedIn)?.me?.username
@@ -912,7 +910,6 @@ class Code(private val session: Session, private val platform: Platform? = null)
     companion object {
         private const val WORKSPACES = "/api/v1/code/workspaces"
         private const val STATE = "kimono.ai.state"
-        private const val PEOPLE = "/api/v1/drive/people"
         /** Up to this a file is attached as it is; past it, through the chat's Drive folder. */
         const val MAX_ATTACHMENT = 20L * 1024 * 1024
         const val LARGEST_ATTACHMENT = 4L * 1024 * 1024 * 1024

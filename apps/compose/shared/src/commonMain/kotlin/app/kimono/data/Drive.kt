@@ -68,9 +68,6 @@ data class CrestCatalogue(val crests: List<CrestChoice>, val colors: List<CrestC
 data class Person(val username: String, val name: String, val picture: String? = null)
 
 @Serializable
-private data class PeopleList(val people: List<Person>)
-
-@Serializable
 data class DriveNode(
     val id: String,
     val spaceId: String,
@@ -232,7 +229,8 @@ class Drive(private val session: Session) {
     fun knownFolder(id: String): DriveFolder? = known("/api/v1/drive/nodes/$id")
     fun knownSpace(id: String): SpaceDetail? = known("/api/v1/drive/spaces/$id")
     fun knownTrash(): List<DriveNode>? = known<TrashList>(TRASH)?.items
-    fun knownPeople(): List<Person>? = known<PeopleList>(PEOPLE)?.people
+    /** People by username, and finding them by name (People.kt). */
+    val people: People get() = session.people
     fun knownApps(): List<KimonoAppLink>? = known<AppList>(APPS)?.also(::heard)?.apps
 
     suspend fun spaces(): List<DriveSpace> = json.decodeFromString<SpaceList>(session.fetch(SPACES)).spaces
@@ -339,8 +337,6 @@ class Drive(private val session: Session) {
     /** Where a space's link opens: the Kimono's own guest page. */
     fun spaceLinkUrl(token: String): String = "${session.server?.trimEnd('/') ?: ""}/s/$token"
 
-    /** Everyone with a Kimono account. */
-    suspend fun people(): List<Person> = json.decodeFromString<PeopleList>(session.fetch(PEOPLE)).people
 
     /** Folders and files shared with you from spaces you aren't in, each standing on its own. */
     suspend fun sharedWithYou(): List<DriveNode> = json.decodeFromString<TrashList>(session.fetch(SHARED)).items
@@ -581,7 +577,6 @@ class Drive(private val session: Session) {
         private const val SPACES = "/api/v1/drive/spaces"
         private const val TRASH = "/api/v1/drive/trash"
         private const val SHARED = "/api/v1/drive/shared-with-you"
-        private const val PEOPLE = "/api/v1/drive/people"
         private const val APPS = "/api/v1/apps"
         private const val MY_APPS = "/api/v1/me/apps"
         private const val CRESTS = "/api/v1/drive/crests"

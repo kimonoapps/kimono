@@ -47,7 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.kimono.data.KimonoProblem
-import app.kimono.data.Person
+import app.kimono.data.People
 import app.kimono.data.Platform
 import app.kimono.data.Sharing
 import app.kimono.ui.InkLoader
@@ -70,8 +70,8 @@ class ShareTarget(
     val known: Sharing?,
     val load: suspend () -> Sharing,
     val set: suspend (username: String, role: String?) -> Sharing?,
-    val people: suspend () -> List<Person>,
-    val knownPeople: List<Person>,
+    /** Names and faces by username, and finding someone to add (People.kt). */
+    val people: People,
     /** Turns the public link on (giving it) or off; null where there's no public link (Drive). */
     val link: (suspend (on: Boolean) -> String?)? = null,
     /** Whether you may change it, when the answer doesn't say. */
@@ -89,16 +89,13 @@ internal fun namesOf(names: List<String>): String = when (names.size) {
 fun ShareSheet(target: ShareTarget, me: String?, platform: Platform, onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
     var sharing by remember { mutableStateOf(target.known) }
-    var everyone by remember { mutableStateOf(target.knownPeople) }
     var problem by remember { mutableStateOf<String?>(null) }
-    var search by remember { mutableStateOf("") }
     var linkBusy by remember { mutableStateOf(false) }
     val saving = remember { mutableStateListOf<String>() }
     LaunchedEffect(Unit) {
         try { sharing = target.load() } catch (_: KimonoProblem) { problem = DIDNT_WORK }
-        runCatching { target.people() }.onSuccess { everyone = it }
     }
-    val byName = everyone.associateBy { it.username.lowercase() }
+    val byName = target.people
     fun nameOf(username: String) = byName[username.lowercase()]?.name ?: username
     val canEdit = sharing?.role?.let { it == "owner" || it == "editor" } ?: target.canEdit
 
@@ -141,23 +138,9 @@ fun ShareSheet(target: ShareTarget, me: String?, platform: Platform, onDismiss: 
                 }
                 if (canEdit) {
                     Text("Add people", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
-                    OutlinedTextField(search, { search = it }, singleLine = true, label = { Text("Name or username") }, modifier = Modifier.fillMaxWidth())
                     /* Anyone who has it already, on its list or through a folder above, isn't offered again. */
-                    val taken = (shown.shares.map { it.username } + shown.inherited.map { it.username }).map { it.lowercase() }.toSet()
-                    val candidates = everyone.filter { it.username.lowercase() !in taken && !it.username.equals(me, ignoreCase = true) }
-                        .filter { search.isBlank() || it.name.contains(search, ignoreCase = true) || it.username.contains(search, ignoreCase = true) }
-                    if (candidates.isEmpty()) Quietly(if (search.isBlank()) "Everyone already has it." else "No one called that.")
-                    candidates.forEach { person ->
-                        Row(
-                            Modifier.fillMaxWidth().heightIn(min = 52.dp).background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(16.dp))
-                                .clickable { change(person.username, "editor") }.padding(horizontal = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            Portrait(person.picture, person.name, person.username, 32.dp)
-                            Text(person.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                            if (person.username in saving) InkLoader(size = 18.dp) else Icon(kimonoIcon("plus"), "Add ${person.name}", modifier = Modifier.size(20.dp))
-                        }
-                    }
+                    val taken = (shown.shares.map { it.username } + shown.inherited.map { it.username } + listOfNotNull(me)).toSet()
+                    PeopleSearch(target.people, skip = taken, placeholder = "Name or username", onPick = { change(it.username, "editor") })
                 }
                 /* The public link, at the foot: read-only, no sign-in. */
                 val link = target.link

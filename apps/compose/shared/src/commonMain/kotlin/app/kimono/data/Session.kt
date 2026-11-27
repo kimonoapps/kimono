@@ -56,6 +56,8 @@ class Session(private val platform: Platform, private val http: HttpClient) {
     private val renewing = Mutex()
     /** What the Portal answered last, so screens open on it while they ask again. */
     val answers = Answers(platform)
+    /** People on this Kimono, by name or username, never all of them (People.kt). */
+    val people by lazy { People(this) }
     /* The sign-in provider's endpoints barely ever change: asked once per launch, not at every renewal. */
     private val discovered = mutableMapOf<String, Discovery>()
 
