@@ -1,0 +1,15 @@
+/* 人 Finding someone: Kata's search field, then the closest few, a face and a name each. */
+.people-search { display: grid; gap: var(--k-space-2); }
+.people-search-found { display: grid; gap: 2px; }
+.people-search-found > button {
+  display: flex; align-items: center; gap: var(--k-space-3); width: 100%; min-height: 52px;
+  padding: var(--k-space-2) var(--k-space-3); border: 0; border-radius: var(--k-r-m);
+  background: none; color: var(--k-on-surface); text-align: left; cursor: pointer;
+  transition: background var(--k-t-state);
+}
+.people-search-found > button:hover, .people-search-found > button:focus-visible { background: var(--k-hover); outline: 0; }
+.people-search-found > button > span:not(.portrait) { display: grid; min-width: 0; flex: 1; }
+.people-search-found b { font: 600 15px/20px var(--k-sans); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.people-search-found small { font: 13px/18px var(--k-sans); color: var(--k-on-surface-variant); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.people-search-found .people-search-act { flex: none; display: inline-flex; align-items: center; gap: 4px; font: 600 14px/20px var(--k-sans); color: var(--k-accent); }
+.people-search-note { margin: 0; padding: var(--k-space-1) var(--k-space-3); font: 14px/20px var(--k-sans); color: var(--k-on-surface-variant); }

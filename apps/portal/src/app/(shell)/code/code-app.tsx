@@ -8,6 +8,7 @@ import { cardOf, cardWords } from "@/lib/code/progress-card";
 import { kimonoCommand } from "@/lib/code/kimono-commands";
 import { Crossing, useCrossTo } from "@/components/crossing";
 import { Scroller } from "@/components/scroller";
+import { knowPeople, PeopleSearch, usePeopleBook } from "@/components/people-search";
 import { filesIn, useFileDrop } from "@/components/file-drop";
 import { FileOverlay, FilePreview, FileThumb, previewable, TypeMark } from "@/components/file-preview/file-preview";
 import { extensionLabel, lowerExtension, pictureExtensions, previewKind } from "@/components/file-preview/kinds";
@@ -450,10 +451,9 @@ export function CodeApp({ blocked, admin, driveApp, me }: { blocked: string | nu
   const [spaces, setSpaces] = useState<DriveSpace[]>([]);
   useEffect(() => { drive.spaces().then(setSpaces, () => {}); }, []);
   const marks = useMemo<Marks>(() => ({ drive: driveApp, spaces: new Map(spaces.map((space) => [space.name.toLowerCase(), space])) }), [driveApp, spaces]);
-  /* The household, by name and picture: who shared a chat, who wrote in it, who to share with. */
-  const [household, setHousehold] = useState<Person[]>([]);
-  useEffect(() => { drive.people().then(setHousehold, () => {}); }, []);
-  const viewer = useMemo<Viewer>(() => ({ me, guest: false, people: new Map(household.map((p) => [p.username.toLowerCase(), p])) }), [me, household]);
+  /* People by name and picture, looked up as they're met: who shared a chat, who wrote in it. */
+  const book = usePeopleBook();
+  const viewer = useMemo<Viewer>(() => ({ me, guest: false, people: book }), [me, book]);
   const params = useCodeParams();
   /* Old links carried the screen in the query string: move it after the #, once. */
   useEffect(() => {
@@ -1132,15 +1132,15 @@ const MarksContext = createContext<Marks>({ drive: null, spaces: new Map() });
    in it, or only read it. Someone who opened its link without signing in is
    a guest, and sees the chat alone. */
 
-type Viewer = { me: string | null; guest: boolean; people: Map<string, Person>; /** An administrator reading it from the feedback page. */ peek?: boolean };
-const ViewerContext = createContext<Viewer>({ me: null, guest: false, people: new Map() });
+type Viewer = { me: string | null; guest: boolean; people: Readonly<Record<string, Person>>; /** An administrator reading it from the feedback page. */ peek?: boolean };
+const ViewerContext = createContext<Viewer>({ me: null, guest: false, people: {} });
 const ChatAccess = createContext<{ access: Access; owner: string }>({ access: "owner", owner: "" });
 /** Whether the person looking owns the chat in front of them: only they rename, share, run its app, answer for its Drive. */
 const useOwns = () => useContext(ChatAccess).access === "owner";
 
 /** Someone in the household by their username: their name and picture when Kimono knows them. */
 function usePerson(username: string): Person {
-  const found = useContext(ViewerContext).people.get(username.toLowerCase());
+  const found = useContext(ViewerContext).people[username.toLowerCase()];
   return found ?? { username, name: username, picture: null };
 }
 
@@ -1951,7 +1951,7 @@ function SuggestedApps() {
 export function KeptChat({ title, at, chat }: { title: string; at: number; chat: KeptAnswer[] }) {
   const events = useMemo(() => keptEvents(chat, at), [chat, at]);
   const workspace = useMemo(() => ({ id: "kept", title, kind: "chat", owner: "" }) as unknown as Workspace, [title]);
-  const viewer = useMemo<Viewer>(() => ({ me: null, guest: false, peek: true, people: new Map() }), []);
+  const viewer = useMemo<Viewer>(() => ({ me: null, guest: false, peek: true, people: {} }), []);
   const marks = useMemo<Marks>(() => ({ drive: null, spaces: new Map() }), []);
   const access = useMemo(() => ({ access: "read" as Access, owner: "" }), []);
   const [beside, setBeside] = useState<string | null>(null);
@@ -1974,7 +1974,7 @@ export function KeptChat({ title, at, chat }: { title: string; at: number; chat:
 /** A kept turn (lib/code/feedback.ts) back as the events it came from, near enough for the chat to draw. */
 /** A kept pair of takes, read from Admin → Kimono AI feedback: each take's artifacts side by side, the kept one marked. Nothing anyone said. */
 export function KeptTakes({ takes, kept, labels }: { takes: KeptTakeEntry[]; kept: 0 | 1; labels: [string, string] }) {
-  const viewer = useMemo<Viewer>(() => ({ me: null, guest: false, peek: true, people: new Map() }), []);
+  const viewer = useMemo<Viewer>(() => ({ me: null, guest: false, peek: true, people: {} }), []);
   const marks = useMemo<Marks>(() => ({ drive: null, spaces: new Map() }), []);
   const access = useMemo(() => ({ access: "read" as Access, owner: "" }), []);
   const [tab, setTab] = useState<0 | 1>(kept);
@@ -2733,24 +2733,10 @@ function useCopy() {
   return { copied, problem, copy };
 }
 
-/** Finding someone in the household to share with, by name or username: everyone but the owner and who's in already. */
+/** Finding someone to share with (the shared search): everyone but the owner and who's in already. */
 function PeopleFinder({ owner, taken, onPick }: { owner: string; taken: Set<string>; onPick: (person: Person) => void }) {
-  const { people } = useContext(ViewerContext);
-  const [find, setFind] = useState("");
-  const words = find.trim().toLowerCase().replace(/^@/, "");
-  const found = words ? [...people.values()].filter((p) => p.username.toLowerCase() !== owner.toLowerCase() && !taken.has(p.username.toLowerCase())
-    && (p.name.toLowerCase().includes(words) || p.username.toLowerCase().includes(words))).slice(0, 6) : [];
-  const pick = (p: Person) => { setFind(""); onPick(p); };
-  return <div className="cd-share-find">
-    <label className="cd-conn-search"><Icon name="search" /><input value={find} onChange={(event) => setFind(event.target.value)} placeholder="Add people" aria-label="Add people"
-      onKeyDown={(event) => { if (event.key === "Enter" && found[0]) { event.preventDefault(); pick(found[0]); } }} /></label>
-    {words ? <div className="cd-share-found" role="listbox" aria-label="People">
-      {found.map((p) => <button key={p.username} type="button" role="option" aria-selected={false} onClick={() => pick(p)}>
-        <Face username={p.username} size={32} /><span><b>{p.name}</b><small>@{p.username}</small></span>
-      </button>)}
-      {!found.length ? <p className="cd-quiet">No one by that name.</p> : null}
-    </div> : null}
-  </div>;
+  const skip = useMemo(() => [owner, ...taken], [owner, taken]);
+  return <PeopleSearch className="cd-share-find" skip={skip} onPick={(p) => { knowPeople([p]); onPick(p); }} />;
 }
 
 /** One person it's shared with: who, and (when given) what they may do. */
@@ -4242,7 +4228,7 @@ export function GuestChat({ token, id, owner, ownerName }: { token: string; id: 
   const load = useCallback(() => code.workspace(id).then((w) => { setWorkspace(w); setProblem(null); }, (error) => setProblem(problemText(error))), [id]);
   useEffect(() => { void load(); }, [load]);
   const now = useNow(workspace?.turn?.state === "running");
-  const viewer = useMemo<Viewer>(() => ({ me: null, guest: true, people: new Map([[owner.toLowerCase(), { username: owner, name: ownerName, picture: null }]]) }), [owner, ownerName]);
+  const viewer = useMemo<Viewer>(() => ({ me: null, guest: true, people: { [owner.toLowerCase()]: { username: owner, name: ownerName, picture: null } } }), [owner, ownerName]);
   const marks = useMemo<Marks>(() => ({ drive: null, spaces: new Map() }), []);
   return <ViewerContext.Provider value={viewer}><MarksContext.Provider value={marks}><div className="cd-page">
     <div className="cd cd-guest has-workspace">

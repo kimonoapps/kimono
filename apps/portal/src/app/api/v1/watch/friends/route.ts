@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * Friends (lib/watch/friends.ts): each with what they're watching now and lately; who asked, who's been asked; asks to join.
- * `?q=<name>`: only the people that matches to ask, `{ people }` (two letters at least; never everyone).
+ * `?q=<name>`: only the people that matches to ask, `{ people }` (three letters at least; never everyone).
  */
 export async function GET(request: Request) {
   const user = await apiUser();

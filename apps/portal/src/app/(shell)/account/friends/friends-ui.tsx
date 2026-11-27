@@ -9,6 +9,7 @@ import { JointSwitch } from "@/components/joint-switch";
 import { LineIcon, type LineIconName } from "@/components/line-icon";
 import { AppearanceFlip } from "@/components/appearance";
 import { Portrait } from "@/components/portrait";
+import { PeopleSearch } from "@/components/people-search";
 import { SilkscreenBadge } from "./silkscreen";
 import { underName, WidgetBoard, type LinkShow, type BooksExtras, type MusicExtras, type Widget } from "./widgets";
 import { LinkMark } from "./link-marks";
@@ -119,18 +120,11 @@ export function FriendsView() {
   const [list, setList] = useState<FriendsList | null>(null);
   const [inbox, setInbox] = useState<Inbox | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
-  const [typed, setTyped] = useState("");
-  const [found, setFound] = useState<Person[]>([]);
   const load = useCallback(() => {
     call<FriendsList>("/api/v1/friends").then(setList, (e) => setProblem(message(e)));
     call<Inbox>("/api/v1/recommendations").then(setInbox, () => {});
   }, []);
   useEffect(load, [load]);
-  useEffect(() => {
-    if (typed.trim().length < 2) return;
-    const timer = setTimeout(() => { call<{ people: Person[] }>(`/api/v1/friends?q=${encodeURIComponent(typed.trim())}`).then((r) => setFound(r.people), () => {}); }, 200);
-    return () => clearTimeout(timer);
-  }, [typed, list]);
   const change = (type: "ask" | "yes" | "no" | "remove", username: string) =>
     call("/api/v1/friends", "POST", { type, username }).then(load, (e) => setProblem(message(e)));
   const putAway = (r: Recommendation) => {
@@ -169,12 +163,9 @@ export function FriendsView() {
 
     <div className="label">Add friends</div>
     <div className="seg">
-      <label className="row fr-find"><InkBlot tint="#8a7c77" seed="find people"><LineIcon name="search" /></InkBlot>
-        <input type="search" placeholder="Name" value={typed} onChange={(e) => setTyped(e.target.value)} aria-label="Find people" /></label>
-      {(typed.trim().length < 2 ? [] : found).map((p) => <div key={p.username} className="row">
-        <Face person={p} /><span className="text"><b>{p.name}</b><small>@{p.username}</small></span>
-        <Seal compact onClick={() => void change("ask", p.username).then(() => setTyped(""))}>Ask</Seal>
-      </div>)}
+      <PeopleSearch className="fr-find" placeholder="Name" action="Ask"
+        find={(q) => call<{ people: Person[] }>(`/api/v1/friends?q=${encodeURIComponent(q)}`).then((r) => r.people)}
+        onPick={(p) => change("ask", p.username)} />
       {list?.asking.map((p) => <div key={p.username} className="row">
         <Face person={p} /><span className="text"><b>{p.name}</b><small>Asked</small></span>
         <Seal tone="quiet" compact onClick={() => void change("remove", p.username)}>Take back</Seal>

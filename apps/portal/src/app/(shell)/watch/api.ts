@@ -139,7 +139,7 @@ export const friendsApi = {
   change: (type: "ask" | "yes" | "no" | "remove", username: string) => call<{ state: string | null }>("friends", post({ type, username })),
   /** A friend's taste: what they loved, liked and didn't like, and their list. */
   taste: (username: string) => call<FriendTaste>(`friends/${encodeURIComponent(username)}`),
-  /** People to ask to be friends, by what was typed (two letters at least). */
+  /** People to ask to be friends, by what was typed (three letters at least). */
   find: (q: string) => call<{ people: Person[] }>(`friends?q=${encodeURIComponent(q)}`).then((r) => r.people),
   asks: () => call<{ incoming: JoinAsk[]; outgoing: JoinAsk[] }>("friends/join"),
   askToJoin: (to: string) => call<{ ask: JoinAsk }>("friends/join", post({ to })).then((a) => a.ask),

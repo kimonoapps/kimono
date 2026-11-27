@@ -1,6 +1,7 @@
 "use client";
 
 import { Portrait } from "@/components/portrait";
+import { PeopleSearch } from "@/components/people-search";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { watchApi, type Card, type Home, type Prefs, type Rating, type Shelf, type TitleView } from "./api";
 import { AppLockup, KimonoBranch } from "@kimono/ui";
@@ -427,10 +428,9 @@ function copyLater(text: Promise<string>): Promise<void> {
   return text.then((t) => navigator.clipboard.writeText(t));
 }
 
-/* Start a party: a link to share, and anyone you look up by name. */
+/* Start a party: a link to share, and anyone found by name (their friends suggested first). */
 function TogetherDialog({ people, friends, onStart, onClose }: { people: Person[]; friends: string[]; onStart: (usernames: string[], copy: boolean) => void; onClose: () => void }) {
-  const [chosen, setChosen] = useState<string[]>([]);
-  const [query, setQuery] = useState("");
+  const [chosen, setChosen] = useState<Person[]>([]);
   const [shown, setShown] = useState(false);
   useEffect(() => {
     const frame = requestAnimationFrame(() => setShown(true));
@@ -438,37 +438,26 @@ function TogetherDialog({ people, friends, onStart, onClose }: { people: Person[
     document.addEventListener("keydown", key, true);
     return () => { cancelAnimationFrame(frame); document.removeEventListener("keydown", key, true); };
   }, [onClose]);
-  const q = query.trim().toLowerCase();
-  /* Before anything is typed, their friends are suggested (the ones watched with lately first); typing finds anyone. */
-  const found = q ? people.filter((p) => !chosen.includes(p.username.toLowerCase()) && (p.name.toLowerCase().includes(q) || p.username.toLowerCase().includes(q))).slice(0, 5)
-    : friends.filter((u) => !chosen.includes(u.toLowerCase())).map((u) => people.find((p) => p.username.toLowerCase() === u.toLowerCase())).filter((p): p is Person => Boolean(p)).slice(0, 5);
-  const picked = chosen.map((u) => people.find((p) => p.username.toLowerCase() === u)).filter((p): p is Person => Boolean(p));
-  const field = useRef<HTMLInputElement>(null);
-  const add = (u: string) => { setChosen((c) => [...c, u]); setQuery(""); field.current?.focus(); };
+  /* Before anything is typed, their friends are suggested (the ones watched with lately first). */
+  const suggested = useMemo(() => friends.map((u) => people.find((p) => p.username.toLowerCase() === u.toLowerCase())).filter((p): p is Person => Boolean(p)).slice(0, 5), [friends, people]);
+  const skip = useMemo(() => chosen.map((p) => p.username), [chosen]);
+  const usernames = chosen.map((p) => p.username.toLowerCase());
   return <div className={cx("kw-dialog", shown && "kw-on")} role="dialog" aria-modal="true" aria-label="Watch together" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <div className="kw-dialog-box kw-together">
       <h3>Watch together</h3>
-      {people.length ? <div className="kw-tg">
-        <label className="kw-tg-field">
-          <Icon name="search" />
-          <input ref={field} autoFocus value={query} placeholder="Invite someone" aria-label="Invite someone" onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => { if (event.key === "Enter" && found[0]) { event.preventDefault(); add(found[0].username.toLowerCase()); } if (event.key === "Backspace" && !query && chosen.length) setChosen((c) => c.slice(0, -1)); }} />
-        </label>
-        {found.length ? <div className="kw-tg-found" role="listbox">
-          {found.map((p) => <button key={p.username} role="option" aria-selected={false} onClick={() => add(p.username.toLowerCase())}>
-            <InviteFace person={p} /><b>{p.name || p.username}</b><span>{p.username}</span>
-          </button>)}
-        </div> : q ? <p className="kw-tg-none">No one by that name</p> : null}
-        {picked.length ? <div className="kw-tg-chips">
-          {picked.map((p) => <button key={p.username} aria-label={`Remove ${p.name || p.username}`} onClick={() => setChosen((c) => c.filter((u) => u !== p.username.toLowerCase()))}>
+      <div className="kw-tg">
+        <PeopleSearch autoFocus placeholder="Invite someone" skip={skip} suggested={suggested}
+          onPick={(p) => setChosen((c) => [...c, p])} onEmptyBackspace={() => setChosen((c) => c.slice(0, -1))} />
+        {chosen.length ? <div className="kw-tg-chips">
+          {chosen.map((p) => <button key={p.username} aria-label={`Remove ${p.name || p.username}`} onClick={() => setChosen((c) => c.filter((x) => x.username !== p.username))}>
             <InviteFace person={p} />{(p.name || p.username).split(" ")[0]}<Icon name="close" />
           </button>)}
         </div> : null}
-      </div> : null}
+      </div>
       <div className="kw-btns">
         <button className="kw-btn kw-tonal" onClick={onClose}>Cancel</button>
-        <button className="kw-btn kw-tonal" onClick={() => onStart(chosen, true)}><Icon name="link" />Copy link</button>
-        <button className="kw-btn kw-primary" onClick={() => onStart(chosen, false)}><Icon name="play" />Start</button>
+        <button className="kw-btn kw-tonal" onClick={() => onStart(usernames, true)}><Icon name="link" />Copy link</button>
+        <button className="kw-btn kw-primary" onClick={() => onStart(usernames, false)}><Icon name="play" />Start</button>
       </div>
     </div>
   </div>;

@@ -370,7 +370,6 @@ async function driveCall<T>(path: string): Promise<T> {
 }
 
 export const drive = {
-  people: () => driveCall<{ people: Person[] }>("/people").then((r) => r.people),
   spaces: () => driveCall<{ spaces: DriveSpace[] }>("/spaces").then((r) => r.spaces),
   folder: (id: string) => driveCall<{ folder: DriveItem; path: DriveItem[]; children: DriveItem[] }>(`/nodes/${encodeURIComponent(id)}`),
 };

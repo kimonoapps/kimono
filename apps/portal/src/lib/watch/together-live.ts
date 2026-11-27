@@ -135,7 +135,7 @@ export async function createParty(cfg: WatchConfig, username: string, raw: Recor
   return { state: viewFor(party, username) };
 }
 
-/** The parties someone hosts, is in, or is asked to, with what's on; and the household to invite. */
+/** The parties someone hosts, is in, or is asked to, with what's on; and their friends, the ones to suggest. Anyone else is found by name (lib/people). */
 export async function partiesOf(username: string, origin: string) {
   const now = Date.now(), db = watchDb();
   const u = username.toLowerCase();
@@ -159,7 +159,9 @@ export async function partiesOf(username: string, origin: string) {
   const recent = recentWith(db, u);
   const at = (x: string) => { const i = recent.indexOf(x); return i < 0 ? Infinity : i; };
   const friends = friendsOfUser(u).sort((a, b) => at(a) - at(b) || nameOf(a).localeCompare(nameOf(b)));
-  return { parties, people: everyone, recent, friends };
+  /* people: only who the app shows by face here (these parties and friends), never everyone. */
+  const shown = new Set([...friends, ...parties.flatMap((p) => [p.host, ...p.watching])]);
+  return { parties, people: everyone.filter((p) => shown.has(p.username)), recent, friends };
 }
 
 /** The live party this person has a screen in right now, if any. */

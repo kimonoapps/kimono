@@ -1,11 +1,12 @@
 "use client";
 
-import { Carousel, InkMeter, SectionHeader, SearchField, EmptyState, PageHeader, BackButton } from "@kimono/ui";
+import { Carousel, InkMeter, SectionHeader, EmptyState, PageHeader, BackButton } from "@kimono/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { friendsApi, type Card, type Friend, type FriendHere, type FriendRated, type FriendsPage as Page, type FriendTaste, type JoinAsk, type Person } from "./api";
 import { cx, Img, Rail, useWatch } from "./bits";
 import { Portrait } from "@/components/portrait";
+import { PeopleSearch } from "@/components/people-search";
 import { PosterCard } from "./home";
 import { Icon } from "./icons";
 import { screenId, together } from "./party";
@@ -138,24 +139,9 @@ export function FriendsThought({ friends }: { friends: FriendRated[] }) {
   </div>;
 }
 
-/** Finding someone to ask by name: no one is listed until two letters are typed. */
+/** Finding someone to ask by name (the shared search): no one is listed until three letters are typed. */
 function FindPeople({ onAdd }: { onAdd: (username: string) => Promise<unknown> }) {
-  const [q, setQ] = useState("");
-  const [found, setFound] = useState<Person[] | null>(null);
-  const asked = useRef(0);
-  useEffect(() => {
-    const typed = q.trim();
-    if (typed.length < 2) { setFound(null); return; }
-    const n = ++asked.current;
-    const timer = setTimeout(() => { friendsApi.find(typed).then((people) => { if (n === asked.current) setFound(people); }, () => {}); }, 200);
-    return () => clearTimeout(timer);
-  }, [q]);
-  return <>
-    <SearchField className="kw-fr-find" placeholder="Search by name" value={q} onChange={setQ} />
-    {found?.map((p) => <div key={p.username} className="kw-fr-person"><Face person={p} /><b>{p.name || p.username}</b>
-      <button className="kw-btn kw-tonal" onClick={() => void onAdd(p.username).then(() => setFound((now) => now?.filter((x) => x.username !== p.username) ?? null))}><Icon name="add" />Add</button></div>)}
-    {found && !found.length ? <p className="kw-fr-none">No one called that</p> : null}
-  </>;
+  return <PeopleSearch className="kw-fr-find" placeholder="Search by name" find={friendsApi.find} action={<><Icon name="add" />Add</>} onPick={(p) => onAdd(p.username)} />;
 }
 
 function FriendCard({ f, asking, onAsk, onCancel, onTaste, onRemove }: { f: Friend; asking: JoinAsk | null; onAsk: () => void; onCancel: (a: JoinAsk) => void; onTaste: () => void; onRemove: () => void }) {

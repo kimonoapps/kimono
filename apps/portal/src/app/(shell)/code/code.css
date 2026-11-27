@@ -1416,15 +1416,9 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-share footer { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 12px 24px 20px; }
 .cd-share footer .cd-problem { flex: 1 1 100%; }
 .cd-share-find { display: grid; gap: 6px; }
-.cd-share-find .cd-conn-search { height: 48px; padding: 0 16px; background: var(--k-container-highest, var(--k-container-lowest)); }
-.cd-share-find input { flex: 1; min-width: 0; border: 0; background: none; font: 400 16px/1.4 var(--k-sans); color: var(--k-on-surface); outline: none; }
-.cd-share-found { display: grid; gap: 2px; padding: 6px; border-radius: var(--k-r-l); background: var(--k-container-lowest); }
-.cd-share-found button { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 6px 10px; border: 0; border-radius: var(--k-r-m, 12px); background: none; text-align: left; color: inherit; cursor: pointer; }
-.cd-share-found button:hover, .cd-share-found button:focus-visible { background: var(--k-hover); }
-.cd-share-found span, .cd-share-who { display: grid; gap: 2px; min-width: 0; flex: 1; }
-.cd-share-found b, .cd-share-who b { font: 500 15px/1.3 var(--k-sans); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cd-share-found small, .cd-share-who small { font: 400 13px/1.3 var(--k-sans); color: var(--k-on-surface-variant); }
-.cd-share-found .cd-quiet { padding: 8px 10px; }
+.cd-share-who { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.cd-share-who b { font: 500 15px/1.3 var(--k-sans); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cd-share-who small { font: 400 13px/1.3 var(--k-sans); color: var(--k-on-surface-variant); }
 .cd-share-people { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
 .cd-share-person { display: flex; align-items: center; gap: 12px; min-height: 56px; }
 .cd-share-can.k-choice { width: auto; flex: none; }

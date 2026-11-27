@@ -4,7 +4,7 @@ import { createParty, partiesOf } from "@/lib/watch/together-live";
 
 export const dynamic = "force-dynamic";
 
-/** Watch Together (lib/watch/together.ts): the parties someone hosts, is in, or is asked to, and the household to invite. */
+/** Watch Together (lib/watch/together.ts): the parties someone hosts, is in, or is asked to, and their friends to suggest. */
 export async function GET(request: Request) {
   const user = await apiUser();
   if (!user) return unauthorized();

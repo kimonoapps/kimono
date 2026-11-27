@@ -33,8 +33,7 @@
 .fr-drop { right: auto; left: 6px; }
 
 /* finding people */
-.fr-find { cursor: text !important; }
-.fr-find input { flex: 1; min-width: 0; border: 0; background: transparent; font: 16px var(--sans); color: var(--on-surface); outline: none; }
+.fr-find { padding: 12px; }
 
 /* loading */
 .fr-sk { min-height: 72px; animation: fr-pulse 1.4s ease-in-out infinite; }

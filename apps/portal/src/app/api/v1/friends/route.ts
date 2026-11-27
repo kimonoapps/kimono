@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * 友 Kimono's friends (lib/friends): your friends, who asked you, who you asked, and how many recommendations are new.
- * `?q=<name>`: only the people that matches to ask, `{ people }` (two letters at least; never everyone).
+ * `?q=<name>`: only the people that matches to ask, `{ people }` (three letters at least; never everyone).
  */
 export async function GET(request: Request) {
   const user = await apiUser();

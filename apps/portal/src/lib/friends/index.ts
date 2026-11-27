@@ -118,23 +118,10 @@ export async function friendsList(username: string) {
   };
 }
 
-/**
- * People to ask to be friends, found by what was typed: at least two letters of their name or username,
- * the closest first, at most 8. Friends and those already asked (either way) aren't among them.
- */
+/** People to ask to be friends, found by name (lib/people): friends and those already asked (either way) aren't among them. */
 export async function findPeople(username: string, typed: string): Promise<Person[]> {
-  const u = username.toLowerCase();
-  const q = typed.trim().toLowerCase();
-  if (q.length < 2) return [];
-  const linked = new Set(linksOf(friendsDb(), u).map((l) => l.username));
-  const rank = (p: Person) => {
-    const words = [p.username.toLowerCase(), ...(p.name ?? "").toLowerCase().split(/\s+/)];
-    return words.some((w) => w === q) ? 0 : words.some((w) => w.startsWith(q)) ? 1 : 2;
-  };
-  return (await people())
-    .filter((p) => p.username !== u && !linked.has(p.username) && (p.username.toLowerCase().includes(q) || (p.name ?? "").toLowerCase().includes(q)))
-    .sort((a, b) => rank(a) - rank(b) || (a.name || a.username).localeCompare(b.name || b.username))
-    .slice(0, 8);
+  const { searchPeople } = await import("../people");
+  return searchPeople(username, typed, new Set(linksOf(friendsDb(), username.toLowerCase()).map((l) => l.username)));
 }
 
 /** `{ type: "ask" | "yes" | "no" | "remove", username }`: friendship changes. Answers the link now. */

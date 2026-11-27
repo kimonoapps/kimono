@@ -95,7 +95,6 @@ export const drive = {
   forget: (id: string) => call<unknown>(`/trash/${id}`, { method: "DELETE" }),
   recent: () => call<{ items: DriveNode[] }>("/recent").then((r) => r.items),
   search: (q: string) => call<{ items: DriveNode[] }>(`/search?q=${encodeURIComponent(q)}`).then((r) => r.items),
-  people: () => call<{ people: Person[] }>("/people").then((r) => r.people),
   sharedWithYou: () => call<{ items: DriveNode[] }>("/shared-with-you").then((r) => r.items),
   shares: (id: string) => call<ShareInfo>(`/nodes/${id}/shares`),
   share: (id: string, username: string, role: "editor" | "viewer" | null) => call<ShareInfo | { left: true }>(`/nodes/${id}/shares`, json("PUT", { username, role })),

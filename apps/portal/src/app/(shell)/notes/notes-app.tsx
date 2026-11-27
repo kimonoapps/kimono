@@ -9,6 +9,7 @@ import { Choice, cx, InkBlot, InkPortraitFrame, InkLoader, Seal } from "@kimono/
 import { HoldSeal } from "@/components/hold-seal";
 import { InkCrest } from "@/components/ink-crest";
 import { Portrait as Face } from "@/components/portrait";
+import { knowPeople, PeopleSearch, usePeopleBook } from "@/components/people-search";
 import { SkeletonRows } from "@/components/skeleton";
 import { swap } from "@/components/motion";
 import { notes, when, type Cursor, type Library, type Note, type Notebook, type Person, type Section, type Shareable, type Sharing } from "./api";
@@ -120,7 +121,7 @@ export function NotesApp({ me, publicLinks }: { me: string; publicLinks: boolean
   const placeId = params.get("in") ?? params.get("notebook");
   const [lib, setLib] = useState<Library | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
-  const [people, setPeople] = useState<Record<string, Person>>({});
+  const people = usePeopleBook();
   const [faces, setFaces] = useState<Record<string, string[]>>({});
   const [find, setFind] = useState("");
   const [toast, setToast] = useState<Toast | null>(null);
@@ -153,7 +154,6 @@ export function NotesApp({ me, publicLinks }: { me: string; publicLinks: boolean
     window.addEventListener("focus", again);
     return () => { window.clearInterval(timer); window.removeEventListener("focus", again); };
   }, [load]);
-  useEffect(() => { notes.people().then((list) => setPeople(Object.fromEntries(list.map((p) => [p.username.toLowerCase(), p]))), () => {}); }, []);
   /*
    * Portraits: a notebook shared with people shows up to two of them; one
    * shared with you, and a single note shared with you, shows who shared it.
@@ -791,7 +791,6 @@ function ShareSheet({ thing, me, owner, people, publicLinks, onClose }: { thing:
   const [info, setInfo] = useState<Sharing | null>(null);
   const [busy, setBusy] = useState<Set<string>>(() => new Set());
   const [problem, setProblem] = useState<string | null>(null);
-  const [find, setFind] = useState("");
   const [changed, setChanged] = useState(false);
   const { copied, copy } = useCopy();
   const box = useRef<HTMLDialogElement>(null);
@@ -816,10 +815,7 @@ function ShareSheet({ thing, me, owner, people, publicLinks, onClose }: { thing:
     finally { working("link", false); }
   };
   const ownerKey = owner.toLowerCase();
-  const taken = new Set([me.toLowerCase(), ownerKey, ...(info?.shares ?? []).map((x) => x.username.toLowerCase())]);
-  const words = find.trim().toLowerCase().replace(/^@/, "");
-  const found = words ? Object.values(people).filter((p) => !taken.has(p.username.toLowerCase()) && (p.name.toLowerCase().includes(words) || p.username.toLowerCase().includes(words))).slice(0, 6) : [];
-  const pick = (p: Person) => { setFind(""); void change(p.username, "editor"); };
+  const taken = [me, owner, ...(info?.shares ?? []).map((x) => x.username)];
   /* Who has it through its notebook, else who sees it in its space. */
   const vias = new Map<string, string[]>();
   for (const x of info?.inherited ?? []) vias.set(x.via.name, [...(vias.get(x.via.name) ?? []), nameOf(x.username)]);
@@ -834,14 +830,7 @@ function ShareSheet({ thing, me, owner, people, publicLinks, onClose }: { thing:
     <div className="nt-share-body">
       {info === null && !problem ? <SkeletonRows rows={2} mark={false} /> : null}
       {info && editing ? <div className="nt-share-find">
-        <label className="nt-share-search"><Icon name="search" /><input autoFocus value={find} onChange={(event) => setFind(event.target.value)} placeholder="Add people" aria-label="Add people"
-          onKeyDown={(event) => { if (event.key === "Enter" && found[0]) { event.preventDefault(); pick(found[0]); } }} /></label>
-        {words ? <div className="nt-share-found" role="listbox" aria-label="People">
-          {found.map((p) => <button key={p.username} type="button" role="option" aria-selected={false} onClick={() => pick(p)}>
-            <Faces usernames={[p.username]} people={people} size={32} /><span><b>{p.name}</b><small>@{p.username}</small></span>
-          </button>)}
-          {!found.length ? <p className="nt-quiet">No one by that name.</p> : null}
-        </div> : null}
+        <PeopleSearch autoFocus skip={taken} onPick={(p) => { knowPeople([p]); void change(p.username, "editor"); }} />
       </div> : null}
       {info ? <ul className="nt-share-people">
         <li className="nt-share-person">

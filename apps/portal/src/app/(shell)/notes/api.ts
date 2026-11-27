@@ -79,7 +79,6 @@ export const notes = {
   /** Shares it with someone, changes what they may do, or (null) takes them off; yourself with null is leaving. */
   share: (thing: Pick<Shareable, "kind" | "id">, username: string, role: "editor" | "viewer" | null) => call<Sharing | { left: true }>(`${base(thing)}/members`, json("PUT", { username, role })),
   link: (thing: Pick<Shareable, "kind" | "id">, on: boolean) => call<{ link: string | null }>(`${base(thing)}/link`, on ? { method: "POST" } : { method: "DELETE" }).then((r) => r.link),
-  people: () => call<{ people: Person[] }>("/people").then((r) => r.people),
   /** Writing together: the text now and its change number, to start from (lib/notes/live.ts). */
   join: (id: string) => call<{ version: number; text: string; cursors: Cursor[] }>(`/${id}/live`),
   /** This page's changes after [version], and/or where its cursor is. False when the page is behind. */

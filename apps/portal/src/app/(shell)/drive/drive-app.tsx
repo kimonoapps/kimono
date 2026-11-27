@@ -11,6 +11,7 @@ import { useFileDrop } from "@/components/file-drop";
 import { InkCrest } from "@/components/ink-crest";
 import { AppBloom, BackButton, Choice, cx, EmptyState, InkBlot, InkPortraitFrame, InkWave, InkLoader, Joint, PageHeader, Seal, SearchField, Toast as KataToast, type ToastMessage } from "@kimono/ui";
 import { Portrait as Face } from "@/components/portrait";
+import { knowPeople, PeopleSearch, usePeopleBook } from "@/components/people-search";
 import {
   contentUrl, drive, DriveProblem, extension, hasThumb, isText, kindOf, linkUrl, thumbUrl, readableSize, shared, spaceLinkUrl, upload, when,
   type Crests, type Download, type DriveNode, type Folder, type LinkAccess, type Person, type Role, type ShareInfo, type SharedSpace, type Space, type SpaceDetail,
@@ -193,7 +194,7 @@ export function DriveApp({ me }: { me: Me }) {
   }, [where, view]);
 
   const [spaces, setSpaces] = useState<Space[] | null>(null);
-  const [people, setPeople] = useState<Record<string, Person>>({});
+  const people = usePeopleBook();
   const [problem, setProblem] = useState<string | null>(null);
   const [toast, setToast] = useToast();
   const [making, setMaking] = useState(false);
@@ -209,7 +210,6 @@ export function DriveApp({ me }: { me: Me }) {
     drive.spaces().then((list) => { if (live) setSpaces(list); }, (error) => { if (live) setProblem(problemText(error, "Drive isn't answering.")); });
     return () => { live = false; };
   }, []);
-  useEffect(() => { void drive.people().then((list) => setPeople(Object.fromEntries(list.map((p) => [p.username.toLowerCase(), p])))).catch(() => {}); }, []);
 
   const go = useCallback((to: Record<string, string | null>) => goTo("/drive", to), []);
   const current = spaces?.find((s) => s.id === spaceParam) ?? (view ? null : spaces?.[0] ?? null);
@@ -1015,7 +1015,6 @@ function ShareDialog({ node, me, people, canEdit, onClose }: { node: DriveNode; 
   const [info, setInfo] = useState<ShareInfo | null>(null);
   const [busy, setBusy] = useState<Set<string>>(() => new Set());
   const [problem, setProblem] = useState<string | null>(null);
-  const [find, setFind] = useState("");
   const [changed, setChanged] = useState(false);
   useEffect(() => { drive.shares(node.id).then(setInfo, (error) => setProblem(problemText(error))); }, [node.id]);
   const nameOf = (username: string) => people[username.toLowerCase()]?.name ?? username;
@@ -1031,10 +1030,7 @@ function ShareDialog({ node, me, people, canEdit, onClose }: { node: DriveNode; 
     } catch (error) { setProblem(problemText(error)); }
     finally { working(username, false); }
   };
-  const taken = new Set([me.username.toLowerCase(), ...(info?.shares ?? []).map((x) => x.username.toLowerCase())]);
-  const words = find.trim().toLowerCase().replace(/^@/, "");
-  const found = words ? Object.values(people).filter((p) => !taken.has(p.username.toLowerCase()) && (p.name.toLowerCase().includes(words) || p.username.toLowerCase().includes(words))).slice(0, 6) : [];
-  const pick = (p: Person) => { setFind(""); void change(p.username, "editor"); };
+  const taken = [me.username, ...(info?.shares ?? []).map((x) => x.username)];
   const lead = info && info.space.name && info.space.members > 1 ? `Everyone in ${info.space.name} can see this.` : undefined;
   const can = (role: string) => role === "editor" ? "Can edit" : "Can view";
   return <Dialog title={`Share “${node.name}”`} lead={lead} onClose={() => onClose(changed)} footer={<>
@@ -1043,14 +1039,7 @@ function ShareDialog({ node, me, people, canEdit, onClose }: { node: DriveNode; 
   </>}>
     {info === null && !problem ? <SkeletonRows rows={2} /> : null}
     {info && canEdit ? <div className="dv-share-add">
-      <SearchField className="dv-share-find" autoFocus value={find} onChange={setFind} placeholder="Add people"
-        onKeyDown={(event) => { if (event.key === "Enter" && found[0]) { event.preventDefault(); pick(found[0]); } }} />
-      {words ? <div className="dv-found" role="listbox" aria-label="People">
-        {found.map((p) => <button key={p.username} type="button" role="option" aria-selected={false} onClick={() => pick(p)}>
-          <Portrait person={p} username={p.username} size={32} /><span><b>{p.name}</b><small>@{p.username}</small></span>
-        </button>)}
-        {!found.length ? <p className="dv-quiet-text">No one by that name.</p> : null}
-      </div> : null}
+      <PeopleSearch className="dv-share-find" autoFocus skip={taken} onPick={(p) => { knowPeople([p]); void change(p.username, "editor"); }} />
     </div> : null}
     {info && (info.shares.length || info.inherited.length) ? <ul className="dv-people">
       {info.shares.map((m) => <li key={m.username} className={cx(!canEdit && "is-in")}>
@@ -1151,7 +1140,6 @@ function SettingsView({ space, me, people, onChanged, onLeft, back }: { space: S
   const [problem, setProblem] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [name, setName] = useState(space.name);
-  const [find, setFind] = useState("");
   const [addRole, setAddRole] = useState<Role>("viewer");
   const [leaving, setLeaving] = useState(false);
   const owner = space.role === "owner";
@@ -1167,11 +1155,8 @@ function SettingsView({ space, me, people, onChanged, onLeft, back }: { space: S
     } catch (error) { setProblem(problemText(error)); }
   };
 
-  const inSpace = new Set(detail?.memberList.map((m) => m.username.toLowerCase()) ?? []);
-  const words = find.trim().toLowerCase().replace(/^@/, "");
-  const suggestions = words ? Object.values(people).filter((p) => !inSpace.has(p.username.toLowerCase())
-    && (p.name.toLowerCase().includes(words) || p.username.toLowerCase().includes(words))).slice(0, 6) : [];
-  const add = (p: Person) => { setFind(""); void change(() => drive.setMember(space.id, p.username, addRole), `${p.name} can ${addRole === "editor" ? "edit" : "view"} ${space.name}.`); };
+  const inSpace = detail?.memberList.map((m) => m.username) ?? [];
+  const add = (p: Person) => { knowPeople([p]); void change(() => drive.setMember(space.id, p.username, addRole), `${p.name} can ${addRole === "editor" ? "edit" : "view"} ${space.name}.`); };
   const owners = detail?.memberList.filter((m) => m.role === "owner").length ?? 0;
   const lastOwner = owner && owners <= 1;
   const link = detail?.link ? spaceLinkUrl(detail.link) : null;
@@ -1199,16 +1184,9 @@ function SettingsView({ space, me, people, onChanged, onLeft, back }: { space: S
         })}
         {owner ? <div className="k-form k-after-rows">
           <div className="dv-inv">
-            <label className="k-field"><span>Add someone</span><input value={find} onChange={(e) => setFind(e.target.value)} placeholder="Name or @username"
-              onKeyDown={(e) => { if (e.key === "Enter" && suggestions[0]) { e.preventDefault(); add(suggestions[0]); } }} /></label>
+            <div className="k-field"><span>Add someone</span><PeopleSearch skip={inSpace} placeholder="Name or @username" onPick={add} /></div>
             <label className="k-field"><span>Can</span><Choice value={addRole} onChange={(next) => setAddRole(next as Role)} options={[{ value: "viewer", label: "View" }, { value: "editor", label: "Edit" }, { value: "owner", label: "Own" }]} /></label>
           </div>
-          {words ? <div className="dv-sugg">
-            {suggestions.map((p) => <button key={p.username} type="button" onClick={() => add(p)}>
-              <Portrait person={p} username={p.username} size={28} /><b>{p.name}</b><small>@{p.username}</small>
-            </button>)}
-            {!suggestions.length ? <p className="dv-quiet-text">No one by that name.</p> : null}
-          </div> : null}
         </div> : null}
       </div></div>
 
