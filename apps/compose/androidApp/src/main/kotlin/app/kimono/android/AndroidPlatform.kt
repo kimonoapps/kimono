@@ -251,21 +251,35 @@ class AndroidPlatform(private val context: Context) : Platform {
         (activity ?: context).startActivity(chooser)
     }
 
-    /** Copied into Downloads, where the Files app and the gallery find it; before Android 10, handed to an app instead. */
+    /**
+     * Videos into Movies/Kimono and pictures into Pictures/Kimono, so the gallery shows them;
+     * anything else into Downloads. Before Android 10, handed to an app instead.
+     */
     override suspend fun saveFile(path: String, name: String, mimeType: String?): String? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) { openFile(path, mimeType); return null }
         return withContext(Dispatchers.IO) {
+            val store = android.provider.MediaStore.VOLUME_EXTERNAL_PRIMARY
+            /* The type from the extension when the one given is vague (octet-stream): the gallery only takes videos and pictures. */
+            val type = mimeType?.takeIf { it.startsWith("video/") || it.startsWith("image/") }
+                ?: android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(name.substringAfterLast('.', "").lowercase())
+                ?: mimeType
+            val (collection, folder, said) = when {
+                type?.startsWith("video/") == true -> Triple(android.provider.MediaStore.Video.Media.getContentUri(store), "${android.os.Environment.DIRECTORY_MOVIES}/Kimono", "Saved to your gallery")
+                type?.startsWith("image/") == true -> Triple(android.provider.MediaStore.Images.Media.getContentUri(store), "${android.os.Environment.DIRECTORY_PICTURES}/Kimono", "Saved to your gallery")
+                else -> Triple(android.provider.MediaStore.Downloads.getContentUri(store), android.os.Environment.DIRECTORY_DOWNLOADS, "Saved to Downloads")
+            }
             val resolver = context.contentResolver
             val values = android.content.ContentValues().apply {
                 put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, name)
-                mimeType?.let { put(android.provider.MediaStore.MediaColumns.MIME_TYPE, it) }
+                type?.let { put(android.provider.MediaStore.MediaColumns.MIME_TYPE, it) }
+                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, folder)
                 put(android.provider.MediaStore.MediaColumns.IS_PENDING, 1)
             }
-            val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return@withContext "Couldn't save $name."
+            val uri = runCatching { resolver.insert(collection, values) }.getOrNull() ?: return@withContext "Couldn't save $name."
             try {
                 resolver.openOutputStream(uri)!!.use { out -> FileInputStream(File(path)).use { it.copyTo(out, 64 * 1024) } }
                 resolver.update(uri, android.content.ContentValues().apply { put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
-                "Saved to Downloads"
+                said
             } catch (e: Exception) {
                 resolver.delete(uri, null, null)
                 "Couldn't save $name."
